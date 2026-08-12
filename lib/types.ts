@@ -30,6 +30,11 @@ export const ESSENTIAL_CATEGORIES = CATEGORIES.filter((c) => c.essential)
 export interface BudgetSetup {
   income: number
   period: Period
+  /**
+   * Optional custom length in days. When set (e.g. "make this last 20 days"),
+   * it overrides the weekly/monthly default for all budget math.
+   */
+  days?: number
   startDate: string // ISO date (start of the period)
   /** Planned essential spend per category. */
   essentials: Record<Exclude<CategoryId, 'fun'>, number>

@@ -19,6 +19,14 @@ export function periodLengthDays(period: Period): number {
   return period === 'weekly' ? 7 : 30
 }
 
+/**
+ * The effective number of days a budget covers. Honors a custom `days`
+ * length when set, otherwise falls back to the weekly/monthly default.
+ */
+export function periodDays(setup: BudgetSetup): number {
+  return setup.days && setup.days > 0 ? Math.round(setup.days) : periodLengthDays(setup.period)
+}
+
 function startOfDay(d: Date): Date {
   const copy = new Date(d)
   copy.setHours(0, 0, 0, 0)
@@ -63,7 +71,7 @@ export interface PeriodProgress {
 }
 
 export function periodProgress(setup: BudgetSetup, now = new Date()): PeriodProgress {
-  const totalDays = periodLengthDays(setup.period)
+  const totalDays = periodDays(setup)
   const start = startOfDay(new Date(setup.startDate))
   const today = startOfDay(now)
   const diff = Math.floor((today.getTime() - start.getTime()) / 86_400_000)
@@ -80,7 +88,7 @@ export function periodProgress(setup: BudgetSetup, now = new Date()): PeriodProg
 export function expensesInCurrentPeriod(setup: BudgetSetup, expenses: Expense[], now = new Date()): Expense[] {
   const start = startOfDay(new Date(setup.startDate))
   const end = new Date(start)
-  end.setDate(end.getDate() + periodLengthDays(setup.period))
+  end.setDate(end.getDate() + periodDays(setup))
   return expenses.filter((e) => {
     const d = new Date(e.date)
     return d >= start && d < end && d <= now
@@ -291,6 +299,98 @@ export function detectLeaks(setup: BudgetSetup, expenses: Expense[], now = new D
   }
 
   return leaks
+}
+
+/* ------------------------------------------------------------------ *
+ * Auto-budget generator
+ * ------------------------------------------------------------------ */
+
+export type BudgetProfile = 'needs' | 'balanced' | 'save'
+
+interface Allocation {
+  essentials: number
+  flexible: number
+  savings: number
+  emergency: number
+}
+
+/**
+ * How the money splits under each profile. We deliberately avoid a single
+ * rigid 50/30/20 rule — a student on a tight allowance needs to weight
+ * essentials far more heavily than one with room to save.
+ */
+const PROFILE_WEIGHTS: Record<BudgetProfile, Allocation> = {
+  needs: { essentials: 0.7, flexible: 0.14, savings: 0.06, emergency: 0.1 },
+  balanced: { essentials: 0.6, flexible: 0.2, savings: 0.12, emergency: 0.08 },
+  save: { essentials: 0.52, flexible: 0.18, savings: 0.22, emergency: 0.08 },
+}
+
+export const BUDGET_PROFILES: { id: BudgetProfile; label: string; description: string }[] = [
+  { id: 'needs', label: 'Needs first', description: 'Most of the money covers essentials. Best when funds are tight.' },
+  { id: 'balanced', label: 'Balanced', description: 'A steady mix of essentials, spending money and savings.' },
+  { id: 'save', label: 'Save more', description: 'Push more into savings while covering the basics.' },
+]
+
+/** Default share of the essentials pot across the five essential categories. */
+const ESSENTIAL_WEIGHTS: Record<Exclude<CategoryId, 'fun'>, number> = {
+  food: 0.45,
+  transport: 0.25,
+  data: 0.15,
+  personal: 0.1,
+  school: 0.05,
+}
+
+function round100(n: number): number {
+  return Math.max(0, Math.round(n / 100) * 100)
+}
+
+/**
+ * Suggests a profile based on how much money there is per day. Someone with
+ * very little per day should protect essentials first.
+ */
+export function recommendProfile(income: number, days: number): BudgetProfile {
+  const perDay = days > 0 ? income / days : income
+  if (perDay < 1200) return 'needs'
+  if (perDay < 3000) return 'balanced'
+  return 'save'
+}
+
+/**
+ * Builds a complete budget from just the amount available and how long it
+ * needs to last. This is the "do it for me" path so students never have to
+ * hand-enter every category.
+ */
+export function generateBudget(opts: {
+  income: number
+  period: Period
+  days?: number
+  profile: BudgetProfile
+  startDate?: string
+}): BudgetSetup {
+  const { income, period, days, profile } = opts
+  const w = PROFILE_WEIGHTS[profile]
+
+  const essentialsPot = income * w.essentials
+  const essentials = {
+    food: round100(essentialsPot * ESSENTIAL_WEIGHTS.food),
+    transport: round100(essentialsPot * ESSENTIAL_WEIGHTS.transport),
+    data: round100(essentialsPot * ESSENTIAL_WEIGHTS.data),
+    personal: round100(essentialsPot * ESSENTIAL_WEIGHTS.personal),
+    school: round100(essentialsPot * ESSENTIAL_WEIGHTS.school),
+  }
+
+  const savingsTarget = round100(income * w.savings)
+  const emergencyBuffer = round100(income * w.emergency)
+
+  return {
+    income,
+    period,
+    days: days && days > 0 ? Math.round(days) : undefined,
+    startDate: opts.startDate ?? new Date().toISOString(),
+    essentials,
+    savingsTarget,
+    emergencyBuffer,
+  }
 }
 
 export interface StreakInfo {
