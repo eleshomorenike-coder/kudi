@@ -125,16 +125,17 @@ export interface DailyStatus {
 }
 
 /**
- * The core "safe daily spending" calculation. The flexible pool is spread
- * across the days that remain in the period, then measured against what has
- * already been spent today.
+ * The core "safe daily spending" calculation. The spendable pool (everything
+ * except savings and the emergency buffer) is spread across the days that
+ * remain in the period, then measured against what has already been spent
+ * today. Every expense — food, transport, fun — counts against it.
  */
 export function computeDailyStatus(
   setup: BudgetSetup,
   expenses: Expense[],
   now = new Date(),
 ): DailyStatus {
-  const pool = flexiblePool(setup)
+  const pool = spendablePool(setup)
   const progress = periodProgress(setup, now)
   const periodExpenses = expensesInCurrentPeriod(setup, expenses, now)
 
@@ -190,10 +191,10 @@ export function canIAfford(
 ): AffordResult {
   const status = computeDailyStatus(setup, expenses, now)
   const progress = periodProgress(setup, now)
-  const pool = flexiblePool(setup)
+  const pool = spendablePool(setup)
   const periodExpenses = expensesInCurrentPeriod(setup, expenses, now)
-  const flexSpentSoFar = periodExpenses.reduce((s, e) => s + e.amount, 0)
-  const remainingPool = Math.max(pool - flexSpentSoFar, 0)
+  const spentSoFar = periodExpenses.reduce((s, e) => s + e.amount, 0)
+  const remainingPool = Math.max(pool - spentSoFar, 0)
 
   const afterToday = status.remainingToday - amount
   const daysOfAllowance = status.adaptiveDailyLimit > 0
@@ -204,7 +205,7 @@ export function canIAfford(
     return {
       level: 'danger',
       headline: 'Not recommended',
-      detail: `This is ${formatNaira(amount - remainingPool)} more than your remaining flexible money. It would eat into your food, transport or savings before your next allowance.`,
+      detail: `This is ${formatNaira(amount - remainingPool)} more than the money you have left to spend this period. It would eat into your savings or emergency buffer before your next allowance.`,
     }
   }
 
