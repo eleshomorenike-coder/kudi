@@ -6,12 +6,9 @@ import { Card } from '@/components/ui/card'
 import { QuickAdd } from '@/components/quick-add'
 import { VoiceAdd } from '@/components/voice-add'
 import { useStore } from '@/lib/store'
-import { CATEGORIES, type Expense } from '@/lib/types'
+import type { CategoryMeta, Expense } from '@/lib/types'
 import { formatNaira, isSameDay } from '@/lib/finance'
 import { cn } from '@/lib/utils'
-
-const catLabel = (id: Expense['category']) =>
-  CATEGORIES.find((c) => c.id === id)?.label ?? id
 
 function groupByDay(expenses: Expense[]) {
   const groups: { key: string; label: string; items: Expense[]; total: number }[] = []
@@ -40,9 +37,12 @@ function groupByDay(expenses: Expense[]) {
 }
 
 export function Expenses() {
-  const { expenses, deleteExpense } = useStore()
+  const { expenses, deleteExpense, categories } = useStore()
   const [logMode, setLogMode] = useState<'speak' | 'type'>('speak')
   const groups = groupByDay(expenses)
+
+  const catLabel = (id: Expense['category']) =>
+    categories.find((c: CategoryMeta) => c.id === id)?.label ?? id
 
   return (
     <div className="flex flex-col gap-5">
