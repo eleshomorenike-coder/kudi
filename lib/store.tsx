@@ -8,13 +8,24 @@ import {
   type ReactNode,
 } from 'react'
 import type { AppState, BudgetSetup, Expense, SavingsGoal } from './types'
+import { remainingBudget } from './finance'
 
 const STORAGE_KEY = 'kudi.state.v1'
+
+/** Result of attempting to log an expense against the period budget cap. */
+export interface AddExpenseResult {
+  ok: boolean
+  /** Money left in the period budget (after the expense when `ok`, before it when blocked). */
+  remaining: number
+  attempted: number
+}
 
 interface StoreValue extends AppState {
   ready: boolean
   saveSetup: (setup: BudgetSetup) => void
-  addExpense: (expense: Omit<Expense, 'id' | 'date'> & { date?: string }) => void
+  addExpense: (
+    expense: Omit<Expense, 'id' | 'date'> & { date?: string },
+  ) => AddExpenseResult
   deleteExpense: (id: string) => void
   setGoal: (goal: SavingsGoal | null) => void
   addToSavings: (amount: number) => void
@@ -57,7 +68,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ...state,
     ready,
     saveSetup: (setup) => setState((s) => ({ ...s, setup })),
-    addExpense: (expense) =>
+    addExpense: (expense) => {
+      // Enforce the hard budget cap: never let a spend push the period total
+      // past what the student is actually allowed to spend.
+      if (state.setup) {
+        const remaining = remainingBudget(state.setup, state.expenses)
+        if (expense.amount > remaining) {
+          return { ok: false, remaining, attempted: expense.amount }
+        }
+        setState((s) => ({
+          ...s,
+          expenses: [
+            {
+              id: uid(),
+              date: expense.date ?? new Date().toISOString(),
+              amount: expense.amount,
+              category: expense.category,
+              note: expense.note,
+            },
+            ...s.expenses,
+          ],
+        }))
+        return {
+          ok: true,
+          remaining: remaining - expense.amount,
+          attempted: expense.amount,
+        }
+      }
+
       setState((s) => ({
         ...s,
         expenses: [
@@ -70,7 +108,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           },
           ...s.expenses,
         ],
-      })),
+      }))
+      return { ok: true, remaining: 0, attempted: expense.amount }
+    },
     deleteExpense: (id) =>
       setState((s) => ({ ...s, expenses: s.expenses.filter((e) => e.id !== id) })),
     setGoal: (goal) => setState((s) => ({ ...s, goal })),

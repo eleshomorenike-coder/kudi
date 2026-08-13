@@ -63,6 +63,25 @@ export function spendablePool(setup: BudgetSetup): number {
   return Math.max(0, setup.income - setup.savingsTarget - setup.emergencyBuffer)
 }
 
+/**
+ * The hard budget cap for the period: everything the student is allowed to
+ * spend (the spendable pool) minus what they have already spent this period.
+ * Spending is not permitted to push past this — it protects savings and the
+ * emergency buffer.
+ */
+export function remainingBudget(
+  setup: BudgetSetup,
+  expenses: Expense[],
+  now = new Date(),
+): number {
+  const pool = spendablePool(setup)
+  const spent = expensesInCurrentPeriod(setup, expenses, now).reduce(
+    (s, e) => s + e.amount,
+    0,
+  )
+  return Math.max(pool - spent, 0)
+}
+
 export interface PeriodProgress {
   totalDays: number
   daysElapsed: number

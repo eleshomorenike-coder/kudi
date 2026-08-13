@@ -1,11 +1,14 @@
 'use client'
 
-import { Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { Keyboard, Mic, Trash2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { QuickAdd } from '@/components/quick-add'
+import { VoiceAdd } from '@/components/voice-add'
 import { useStore } from '@/lib/store'
 import { CATEGORIES, type Expense } from '@/lib/types'
 import { formatNaira, isSameDay } from '@/lib/finance'
+import { cn } from '@/lib/utils'
 
 const catLabel = (id: Expense['category']) =>
   CATEGORIES.find((c) => c.id === id)?.label ?? id
@@ -38,13 +41,42 @@ function groupByDay(expenses: Expense[]) {
 
 export function Expenses() {
   const { expenses, deleteExpense } = useStore()
+  const [logMode, setLogMode] = useState<'speak' | 'type'>('speak')
   const groups = groupByDay(expenses)
 
   return (
     <div className="flex flex-col gap-5">
       <Card className="p-5">
-        <h2 className="mb-3 font-semibold">Log a spend</h2>
-        <QuickAdd />
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="font-semibold">Log a spend</h2>
+          <div className="inline-flex rounded-full bg-muted p-0.5">
+            <button
+              type="button"
+              onClick={() => setLogMode('speak')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                logMode === 'speak'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Mic className="size-3.5" /> Speak
+            </button>
+            <button
+              type="button"
+              onClick={() => setLogMode('type')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                logMode === 'type'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Keyboard className="size-3.5" /> Type
+            </button>
+          </div>
+        </div>
+        {logMode === 'speak' ? <VoiceAdd /> : <QuickAdd />}
       </Card>
 
       {groups.length === 0 ? (

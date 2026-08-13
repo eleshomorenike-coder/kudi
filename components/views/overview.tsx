@@ -1,10 +1,21 @@
 'use client'
 
-import { AlertTriangle, ArrowRight, PiggyBank, Shield, TrendingUp } from 'lucide-react'
+import { useState } from 'react'
+import {
+  AlertTriangle,
+  ArrowRight,
+  Keyboard,
+  Mic,
+  PiggyBank,
+  Shield,
+  TrendingUp,
+} from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { StatusPill } from '@/components/status-pill'
 import { QuickAdd } from '@/components/quick-add'
+import { VoiceAdd } from '@/components/voice-add'
+import { cn } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import type { ViewId } from '@/components/app-shell'
 import {
@@ -30,6 +41,7 @@ const statusFg: Record<string, string> = {
 
 export function Overview({ goTo }: { goTo: (v: ViewId) => void }) {
   const { setup, expenses, goal } = useStore()
+  const [logMode, setLogMode] = useState<'speak' | 'type'>('speak')
   if (!setup) return null
 
   const status = computeDailyStatus(setup, expenses)
@@ -74,11 +86,36 @@ export function Overview({ goTo }: { goTo: (v: ViewId) => void }) {
 
       {/* Quick add */}
       <Card className="p-5">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="font-semibold">Log a spend</h2>
-          <span className="text-xs text-muted-foreground">Takes 3 seconds</span>
+          <div className="inline-flex rounded-full bg-muted p-0.5">
+            <button
+              type="button"
+              onClick={() => setLogMode('speak')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                logMode === 'speak'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Mic className="size-3.5" /> Speak
+            </button>
+            <button
+              type="button"
+              onClick={() => setLogMode('type')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                logMode === 'type'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Keyboard className="size-3.5" /> Type
+            </button>
+          </div>
         </div>
-        <QuickAdd />
+        {logMode === 'speak' ? <VoiceAdd /> : <QuickAdd />}
       </Card>
 
       {/* Buffers */}
