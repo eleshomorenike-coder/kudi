@@ -7,12 +7,24 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { AppState, BudgetSetup, Expense, SavingsGoal } from './types'
+import type {
+  AppState,
+  BudgetSetup,
+  CategoryMeta,
+  Expense,
+  SavingsGoal,
+} from './types'
+import { DEFAULT_CATEGORIES } from './types'
 import { remainingBudget } from './finance'
 import { getDeviceId } from './device-id'
 import { recordUsage } from '@/app/actions/usage'
 
-const STORAGE_KEY = 'kudi.state.v1'
+const STORAGE_BASE = 'kudi.state.v1'
+
+/** Per-account storage key so each signed-in user keeps their own data. */
+function storageKey(userId?: string): string {
+  return userId ? `${STORAGE_BASE}::${userId}` : STORAGE_BASE
+}
 
 /** Result of attempting to log an expense against the period budget cap. */
 export interface AddExpenseResult {
@@ -31,6 +43,9 @@ interface StoreValue extends AppState {
   deleteExpense: (id: string) => void
   setGoal: (goal: SavingsGoal | null) => void
   addToSavings: (amount: number) => void
+  addCategory: (meta: Omit<CategoryMeta, 'id' | 'builtin'>) => void
+  updateCategory: (id: string, patch: Partial<Omit<CategoryMeta, 'id' | 'builtin'>>) => void
+  deleteCategory: (id: string) => void
   resetAll: () => void
   loadDemoData: () => void
 }
@@ -41,34 +56,58 @@ function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
-const emptyState: AppState = { setup: null, expenses: [], goal: null }
+const emptyState: AppState = {
+  setup: null,
+  expenses: [],
+  goal: null,
+  categories: DEFAULT_CATEGORIES,
+}
 
-export function StoreProvider({ children }: { children: ReactNode }) {
+/** Backfills categories for accounts created before custom categories existed. */
+function hydrate(state: AppState): AppState {
+  return {
+    ...state,
+    categories:
+      Array.isArray(state.categories) && state.categories.length > 0
+        ? state.categories
+        : DEFAULT_CATEGORIES,
+  }
+}
+
+export function StoreProvider({
+  children,
+  userId,
+}: {
+  children: ReactNode
+  userId?: string
+}) {
   const [state, setState] = useState<AppState>(emptyState)
   const [ready, setReady] = useState(false)
 
+  // Load (and reload when the signed-in account changes) that user's data.
   useEffect(() => {
+    setReady(false)
     try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) setState(JSON.parse(raw))
+      const raw = localStorage.getItem(storageKey(userId))
+      setState(raw ? hydrate(JSON.parse(raw)) : emptyState)
     } catch {
-      // ignore corrupt state
+      setState(emptyState)
     }
     setReady(true)
 
     // Record an anonymous "visit" once per device (server de-dupes repeats).
     const deviceId = getDeviceId()
     if (deviceId) void recordUsage(deviceId, 'visit')
-  }, [])
+  }, [userId])
 
   useEffect(() => {
     if (!ready) return
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+      localStorage.setItem(storageKey(userId), JSON.stringify(state))
     } catch {
       // storage may be unavailable
     }
-  }, [state, ready])
+  }, [state, ready, userId])
 
   const value: StoreValue = {
     ...state,
@@ -131,6 +170,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ? { ...s, goal: { ...s.goal, saved: Math.max(0, s.goal.saved + amount) } }
           : s,
       ),
+    addCategory: (meta) =>
+      setState((s) => {
+        // Slug the label into a stable, unique id.
+        const base = meta.label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'category'
+        let id = base
+        let n = 2
+        while (s.categories.some((c) => c.id === id)) id = `${base}-${n++}`
+        return { ...s, categories: [...s.categories, { ...meta, id, builtin: false }] }
+      }),
+    updateCategory: (id, patch) =>
+      setState((s) => ({
+        ...s,
+        categories: s.categories.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+      })),
+    deleteCategory: (id) =>
+      setState((s) => {
+        const target = s.categories.find((c) => c.id === id)
+        if (!target || target.builtin) return s // built-ins are protected
+        return {
+          ...s,
+          categories: s.categories.filter((c) => c.id !== id),
+          // Re-home any expenses logged under the removed category.
+          expenses: s.expenses.map((e) =>
+            e.category === id ? { ...e, category: 'other' } : e,
+          ),
+        }
+      }),
     resetAll: () => setState(emptyState),
     loadDemoData: () => setState(makeDemoData()),
   }
@@ -203,5 +269,5 @@ function makeDemoData(): AppState {
 
   const goal: SavingsGoal = { name: 'Textbooks for next semester', target: 20000, saved: 5000 }
 
-  return { setup, expenses, goal }
+  return { setup, expenses, goal, categories: DEFAULT_CATEGORIES }
 }

@@ -39,10 +39,7 @@ export function isSameDay(a: Date, b: Date): boolean {
 
 /** Sum of all planned essential category amounts. */
 export function essentialsTotal(setup: BudgetSetup): number {
-  return ESSENTIAL_CATEGORIES.reduce(
-    (sum, c) => sum + (setup.essentials[c.id as keyof typeof setup.essentials] || 0),
-    0,
-  )
+  return Object.values(setup.essentials).reduce((sum, v) => sum + (v || 0), 0)
 }
 
 /** Money left over for day-to-day discretionary spending (after essentials, savings, buffer). */
@@ -115,16 +112,9 @@ export function expensesInCurrentPeriod(setup: BudgetSetup, expenses: Expense[],
 }
 
 export function spentByCategory(expenses: Expense[]): Record<CategoryId, number> {
-  const totals = {
-    food: 0,
-    transport: 0,
-    data: 0,
-    school: 0,
-    personal: 0,
-    fun: 0,
-  } as Record<CategoryId, number>
+  const totals: Record<CategoryId, number> = {}
   for (const e of expenses) {
-    totals[e.category] += e.amount
+    totals[e.category] = (totals[e.category] ?? 0) + e.amount
   }
   return totals
 }
@@ -273,14 +263,15 @@ export function detectLeaks(setup: BudgetSetup, expenses: Expense[], now = new D
   const pool = flexiblePool(setup)
 
   // 1. Heavy discretionary / fun spending
-  if (byCat.fun > 0) {
-    const share = pool > 0 ? byCat.fun / pool : 0
+  const funSpent = byCat.fun ?? 0
+  if (funSpent > 0) {
+    const share = pool > 0 ? funSpent / pool : 0
     if (share >= 0.4) {
       leaks.push({
         id: 'fun-heavy',
         title: 'Flexible spending is running hot',
-        detail: `${formatNaira(byCat.fun)} on flexible/fun spending this week — about ${Math.round(share * 100)}% of your whole flexible budget for the period.`,
-        amount: byCat.fun,
+        detail: `${formatNaira(funSpent)} on flexible/fun spending this week — about ${Math.round(share * 100)}% of your whole flexible budget for the period.`,
+        amount: funSpent,
         level: share >= 0.7 ? 'danger' : 'caution',
       })
     }
@@ -292,7 +283,7 @@ export function detectLeaks(setup: BudgetSetup, expenses: Expense[], now = new D
     const planned = setup.essentials[c.id as keyof typeof setup.essentials] || 0
     if (planned <= 0) continue
     const expectedByNow = planned * progress.fractionElapsed
-    const actual = spentByCategory(expensesInCurrentPeriod(setup, expenses, now))[c.id]
+    const actual = spentByCategory(expensesInCurrentPeriod(setup, expenses, now))[c.id] ?? 0
     if (actual > expectedByNow * 1.25 && actual - expectedByNow > 500) {
       leaks.push({
         id: `over-${c.id}`,

@@ -1,30 +1,49 @@
 export type Period = 'weekly' | 'monthly'
 
-export type CategoryId =
-  | 'food'
-  | 'transport'
-  | 'data'
-  | 'school'
-  | 'personal'
-  | 'fun'
+/**
+ * Categories are now dynamic: a set of broadened built-ins plus any the user
+ * creates. Ids are plain strings so custom categories fit the same shape.
+ */
+export type CategoryId = string
 
 export interface CategoryMeta {
-  id: CategoryId
+  id: string
   label: string
   essential: boolean
-  emoji: string
+  /** Key into the icon map in components/category-visuals. */
+  icon: string
+  /** Key into the color palette in components/category-visuals. */
+  color: string
+  /** Built-ins can't be deleted; user categories can. */
+  builtin?: boolean
 }
 
-export const CATEGORIES: CategoryMeta[] = [
-  { id: 'food', label: 'Food', essential: true, emoji: 'Food' },
-  { id: 'transport', label: 'Transport', essential: true, emoji: 'Transport' },
-  { id: 'data', label: 'Data', essential: true, emoji: 'Data' },
-  { id: 'school', label: 'School', essential: true, emoji: 'School' },
-  { id: 'personal', label: 'Personal', essential: true, emoji: 'Personal' },
-  { id: 'fun', label: 'Flexible / Fun', essential: false, emoji: 'Fun' },
+/**
+ * The starter set every account begins with. The five essential ids
+ * (food, transport, data, school, personal) drive the budget planner, so
+ * their keys must stay stable. Everything else is flexible/trackable.
+ */
+export const DEFAULT_CATEGORIES: CategoryMeta[] = [
+  { id: 'food', label: 'Food', essential: true, icon: 'utensils', color: 'green', builtin: true },
+  { id: 'transport', label: 'Transport', essential: true, icon: 'bus', color: 'blue', builtin: true },
+  { id: 'data', label: 'Data & Airtime', essential: true, icon: 'wifi', color: 'teal', builtin: true },
+  { id: 'school', label: 'School', essential: true, icon: 'cap', color: 'violet', builtin: true },
+  { id: 'personal', label: 'Personal care', essential: true, icon: 'sparkles', color: 'pink', builtin: true },
+  { id: 'groceries', label: 'Groceries', essential: false, icon: 'basket', color: 'lime', builtin: true },
+  { id: 'rent', label: 'Rent & bills', essential: false, icon: 'home', color: 'slate', builtin: true },
+  { id: 'health', label: 'Health', essential: false, icon: 'health', color: 'coral', builtin: true },
+  { id: 'entertainment', label: 'Entertainment', essential: false, icon: 'film', color: 'violet', builtin: true },
+  { id: 'shopping', label: 'Shopping', essential: false, icon: 'bag', color: 'pink', builtin: true },
+  { id: 'subscriptions', label: 'Subscriptions', essential: false, icon: 'repeat', color: 'teal', builtin: true },
+  { id: 'fun', label: 'Flexible / Fun', essential: false, icon: 'party', color: 'amber', builtin: true },
+  { id: 'other', label: 'Other', essential: false, icon: 'tag', color: 'slate', builtin: true },
 ]
 
-export const ESSENTIAL_CATEGORIES = CATEGORIES.filter((c) => c.essential)
+/** Categories that participate in the essentials budget plan (the core five). */
+export const ESSENTIAL_CATEGORIES = DEFAULT_CATEGORIES.filter((c) => c.essential)
+
+/** The essential budget keys used by the planner and setup wizard. */
+export type EssentialKey = 'food' | 'transport' | 'data' | 'school' | 'personal'
 
 /** The plan a student sets up once per budget period. */
 export interface BudgetSetup {
@@ -37,7 +56,7 @@ export interface BudgetSetup {
   days?: number
   startDate: string // ISO date (start of the period)
   /** Planned essential spend per category. */
-  essentials: Record<Exclude<CategoryId, 'fun'>, number>
+  essentials: Record<EssentialKey, number>
   savingsTarget: number
   emergencyBuffer: number
 }
@@ -60,4 +79,6 @@ export interface AppState {
   setup: BudgetSetup | null
   expenses: Expense[]
   goal: SavingsGoal | null
+  /** The user's category set (built-ins plus any custom ones). */
+  categories: CategoryMeta[]
 }
