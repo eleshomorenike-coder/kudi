@@ -83,7 +83,12 @@ export function QuickAdd({ onAdded }: { onAdded?: () => void }) {
                 : 'border-border bg-background hover:bg-muted',
             )}
           >
-            <CategoryIcon name={c.icon} className="size-3.5" />
+            <CategoryIcon
+              icon={c.icon}
+              color={c.color}
+              className={cn('size-5', category === c.id && 'bg-transparent')}
+              iconClassName="size-3.5"
+            />
             {c.label}
           </button>
         ))}
