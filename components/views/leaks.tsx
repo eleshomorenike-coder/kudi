@@ -5,11 +5,10 @@ import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { StatusPill } from '@/components/status-pill'
 import { useStore } from '@/lib/store'
-import { CATEGORIES } from '@/lib/types'
 import { detectLeaks, formatNaira, spentByCategory, totalSpent } from '@/lib/finance'
 
 export function Leaks() {
-  const { setup, expenses } = useStore()
+  const { setup, expenses, categories } = useStore()
   if (!setup) return null
 
   const now = new Date()
@@ -80,7 +79,7 @@ export function Leaks() {
           <span className="font-mono text-sm text-muted-foreground">{formatNaira(weekTotal)}</span>
         </div>
         <ul className="flex flex-col gap-3">
-          {CATEGORIES.map((c) => {
+          {categories.map((c) => {
             const spent = byCat[c.id]
             const pct = weekTotal > 0 ? (spent / weekTotal) * 100 : 0
             return (

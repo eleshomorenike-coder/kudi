@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { useStore } from '@/lib/store'
 import { formatNaira, remainingBudget } from '@/lib/finance'
 import { parseSpokenExpense } from '@/lib/voice'
-import { CATEGORIES, type CategoryId } from '@/lib/types'
+import { type CategoryId } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 /* --- Minimal typings for the Web Speech API (not in lib.dom by default) --- */
@@ -42,7 +42,7 @@ function getRecognitionCtor(): SpeechRecognitionCtor | null {
 type Draft = { amount: string; category: CategoryId; note: string }
 
 export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
-  const { addExpense, setup, expenses } = useStore()
+  const { addExpense, setup, expenses, categories } = useStore()
   const [supported, setSupported] = useState(true)
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState('')
@@ -198,7 +198,7 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <button
               key={c.id}
               type="button"
