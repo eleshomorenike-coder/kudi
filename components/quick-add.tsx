@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useStore } from '@/lib/store'
 import { formatNaira, remainingBudget } from '@/lib/finance'
-import { CATEGORIES, type CategoryId } from '@/lib/types'
+import { type CategoryId } from '@/lib/types'
+import { CategoryIcon } from '@/components/category-visuals'
 import { cn } from '@/lib/utils'
 
 export function QuickAdd({ onAdded }: { onAdded?: () => void }) {
-  const { addExpense, setup, expenses } = useStore()
+  const { addExpense, setup, expenses, categories } = useStore()
   const [amount, setAmount] = useState('')
-  const [category, setCategory] = useState<CategoryId>('food')
+  const [category, setCategory] = useState<CategoryId>(categories[0]?.id ?? 'food')
   const [note, setNote] = useState('')
   const [justAdded, setJustAdded] = useState(false)
   const [blocked, setBlocked] = useState<string | null>(null)
@@ -70,18 +71,19 @@ export function QuickAdd({ onAdded }: { onAdded?: () => void }) {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <button
             key={c.id}
             type="button"
             onClick={() => setCategory(c.id)}
             className={cn(
-              'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
               category === c.id
                 ? 'border-primary bg-primary text-primary-foreground'
                 : 'border-border bg-background hover:bg-muted',
             )}
           >
+            <CategoryIcon name={c.icon} className="size-3.5" />
             {c.label}
           </button>
         ))}
