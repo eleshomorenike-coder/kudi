@@ -4,6 +4,7 @@ import { useState } from 'react'
 import {
   HelpCircle,
   LayoutDashboard,
+  MessageSquareHeart,
   PiggyBank,
   Receipt,
   RotateCcw,
@@ -20,9 +21,17 @@ import { Afford } from '@/components/views/afford'
 import { Leaks } from '@/components/views/leaks'
 import { Budget } from '@/components/views/budget'
 import { Savings } from '@/components/views/savings'
+import { Feedback } from '@/components/views/feedback'
 import { cn } from '@/lib/utils'
 
-export type ViewId = 'overview' | 'expenses' | 'afford' | 'leaks' | 'budget' | 'savings'
+export type ViewId =
+  | 'overview'
+  | 'expenses'
+  | 'afford'
+  | 'leaks'
+  | 'budget'
+  | 'savings'
+  | 'feedback'
 
 const nav: { id: ViewId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -31,6 +40,7 @@ const nav: { id: ViewId; label: string; icon: React.ComponentType<{ className?: 
   { id: 'leaks', label: 'Leaks', icon: Search },
   { id: 'budget', label: 'Budget', icon: Wallet2 },
   { id: 'savings', label: 'Savings', icon: PiggyBank },
+  { id: 'feedback', label: 'Feedback', icon: MessageSquareHeart },
 ]
 
 const titles: Record<ViewId, string> = {
@@ -40,6 +50,7 @@ const titles: Record<ViewId, string> = {
   leaks: 'Money leak detector',
   budget: 'Weekly & monthly budget',
   savings: 'Savings & streaks',
+  feedback: 'Send feedback',
 }
 
 export function AppShell() {
@@ -62,6 +73,8 @@ export function AppShell() {
         return <Budget />
       case 'savings':
         return <Savings />
+      case 'feedback':
+        return <Feedback />
     }
   }
 
@@ -120,15 +133,31 @@ export function AppShell() {
             </div>
             <h1 className="text-lg font-semibold text-balance">{titles[view]}</h1>
           </div>
-          {status && <StatusPill level={status.level} />}
+          <div className="flex items-center gap-2">
+            {status && <StatusPill level={status.level} />}
+            <button
+              onClick={() => setView('feedback')}
+              aria-label="Send feedback"
+              className={cn(
+                'flex size-8 items-center justify-center rounded-lg transition-colors lg:hidden',
+                view === 'feedback'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )}
+            >
+              <MessageSquareHeart className="size-4" />
+            </button>
+          </div>
         </header>
 
         <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-6 lg:px-8">{render()}</main>
       </div>
 
-      {/* Bottom nav (mobile) */}
+      {/* Bottom nav (mobile) — primary destinations only; Feedback lives in the header menu */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex items-center justify-around border-t border-border bg-background/90 px-1 py-1.5 backdrop-blur lg:hidden">
-        {nav.map((item) => {
+        {nav
+          .filter((item) => item.id !== 'feedback')
+          .map((item) => {
           const Icon = item.icon
           const active = view === item.id
           return (

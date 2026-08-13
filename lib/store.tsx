@@ -9,6 +9,8 @@ import {
 } from 'react'
 import type { AppState, BudgetSetup, Expense, SavingsGoal } from './types'
 import { remainingBudget } from './finance'
+import { getDeviceId } from './device-id'
+import { recordUsage } from '@/app/actions/usage'
 
 const STORAGE_KEY = 'kudi.state.v1'
 
@@ -53,6 +55,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // ignore corrupt state
     }
     setReady(true)
+
+    // Record an anonymous "visit" once per device (server de-dupes repeats).
+    const deviceId = getDeviceId()
+    if (deviceId) void recordUsage(deviceId, 'visit')
   }, [])
 
   useEffect(() => {
@@ -67,7 +73,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const value: StoreValue = {
     ...state,
     ready,
-    saveSetup: (setup) => setState((s) => ({ ...s, setup })),
+    saveSetup: (setup) => {
+      setState((s) => ({ ...s, setup }))
+      // Count this device as an activated user (once, server de-dupes).
+      const deviceId = getDeviceId()
+      if (deviceId) void recordUsage(deviceId, 'setup_complete')
+    },
     addExpense: (expense) => {
       // Enforce the hard budget cap: never let a spend push the period total
       // past what the student is actually allowed to spend.
