@@ -67,6 +67,39 @@ export interface Expense {
   category: CategoryId
   note: string
   date: string // ISO datetime
+  /** Where the entry came from. Undefined is treated as 'manual'. */
+  source?: 'manual' | 'bank'
+}
+
+/** A bank a student can link (premium feature). */
+export interface BankInfo {
+  id: string
+  name: string
+  color: string
+}
+
+/**
+ * A live link to a bank account. In this build the data is simulated by
+ * lib/bank-sync; the shape mirrors what a real aggregator (Mono, Okra)
+ * returns so it can be swapped in later without touching the UI.
+ */
+export interface BankConnection {
+  bankId: string
+  bankName: string
+  /** Masked account number, e.g. "•••• 4821". */
+  accountMask: string
+  accountName: string
+  connectedAt: string // ISO
+  lastSyncedAt: string | null // ISO
+}
+
+/** A single transaction pulled from the linked bank. */
+export interface BankTransaction {
+  id: string
+  amount: number
+  category: CategoryId
+  note: string
+  date: string // ISO datetime
 }
 
 export interface SavingsGoal {
@@ -81,4 +114,6 @@ export interface AppState {
   goal: SavingsGoal | null
   /** The user's category set (built-ins plus any custom ones). */
   categories: CategoryMeta[]
+  /** Linked bank account for premium auto-import (null when not connected). */
+  bank: BankConnection | null
 }

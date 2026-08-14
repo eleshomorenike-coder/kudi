@@ -9,6 +9,8 @@ import {
 } from 'react'
 import type {
   AppState,
+  BankConnection,
+  BankTransaction,
   BudgetSetup,
   CategoryMeta,
   Expense,
@@ -46,6 +48,16 @@ interface StoreValue extends AppState {
   addCategory: (meta: Omit<CategoryMeta, 'id' | 'builtin'>) => void
   updateCategory: (id: string, patch: Partial<Omit<CategoryMeta, 'id' | 'builtin'>>) => void
   deleteCategory: (id: string) => void
+  /** Link a bank account for premium auto-import. */
+  connectBank: (connection: BankConnection) => void
+  /** Remove the linked bank (imported expenses are kept). */
+  disconnectBank: () => void
+  /**
+   * Import bank transactions as expenses. De-dupes by transaction id and
+   * bypasses the manual budget cap (these already happened). Also stamps the
+   * connection's lastSyncedAt. Returns how many new expenses were added.
+   */
+  importTransactions: (txns: BankTransaction[]) => number
   resetAll: () => void
   loadDemoData: () => void
 }
@@ -61,9 +73,10 @@ const emptyState: AppState = {
   expenses: [],
   goal: null,
   categories: DEFAULT_CATEGORIES,
+  bank: null,
 }
 
-/** Backfills categories for accounts created before custom categories existed. */
+/** Backfills fields for accounts created before newer features existed. */
 function hydrate(state: AppState): AppState {
   return {
     ...state,
@@ -71,6 +84,7 @@ function hydrate(state: AppState): AppState {
       Array.isArray(state.categories) && state.categories.length > 0
         ? state.categories
         : DEFAULT_CATEGORIES,
+    bank: state.bank ?? null,
   }
 }
 
@@ -197,6 +211,33 @@ export function StoreProvider({
           ),
         }
       }),
+    connectBank: (connection) => setState((s) => ({ ...s, bank: connection })),
+    disconnectBank: () => setState((s) => ({ ...s, bank: null })),
+    importTransactions: (txns) => {
+      let added = 0
+      setState((s) => {
+        const existing = new Set(s.expenses.map((e) => e.id))
+        const fresh: Expense[] = txns
+          .filter((t) => !existing.has(t.id))
+          .map((t) => ({
+            id: t.id,
+            amount: t.amount,
+            category: t.category,
+            note: t.note,
+            date: t.date,
+            source: 'bank' as const,
+          }))
+        added = fresh.length
+        return {
+          ...s,
+          expenses: [...fresh, ...s.expenses].sort(
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+          ),
+          bank: s.bank ? { ...s.bank, lastSyncedAt: new Date().toISOString() } : s.bank,
+        }
+      })
+      return added
+    },
     resetAll: () => setState(emptyState),
     loadDemoData: () => setState(makeDemoData()),
   }
@@ -269,5 +310,5 @@ function makeDemoData(): AppState {
 
   const goal: SavingsGoal = { name: 'Textbooks for next semester', target: 20000, saved: 5000 }
 
-  return { setup, expenses, goal, categories: DEFAULT_CATEGORIES }
+  return { setup, expenses, goal, categories: DEFAULT_CATEGORIES, bank: null }
 }

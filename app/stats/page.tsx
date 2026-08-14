@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { ArrowLeft, MessageSquare, Star, TrendingUp, UserCheck, Users } from 'lucide-react'
+import { ArrowLeft, Inbox, MessageSquare, TrendingUp, UserCheck, Users } from 'lucide-react'
 import { getStats } from '@/app/actions/stats'
+import { FeedbackManager } from '@/components/feedback-manager'
 
 export const metadata: Metadata = {
   title: 'KUDI — App Statistics',
@@ -10,16 +11,6 @@ export const metadata: Metadata = {
 
 // Always read fresh numbers.
 export const dynamic = 'force-dynamic'
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString('en-NG', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 export default async function StatsPage() {
   const stats = await getStats()
@@ -57,6 +48,12 @@ export default async function StatsPage() {
           : 'No ratings yet',
       icon: MessageSquare,
     },
+    {
+      label: 'Needs action',
+      value: stats.newCount.toLocaleString('en-NG'),
+      hint: 'Unresolved feedback to act on',
+      icon: Inbox,
+    },
   ]
 
   return (
@@ -75,7 +72,7 @@ export default async function StatsPage() {
       </header>
 
       {/* Stat cards */}
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <section className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
         {cards.map((c) => {
           const Icon = c.icon
           return (
@@ -91,54 +88,21 @@ export default async function StatsPage() {
         })}
       </section>
 
-      {/* Feedback list */}
+      {/* Feedback management */}
       <section className="mt-10">
-        <h2 className="mb-4 text-lg font-semibold">
-          Feedback
-          {stats.feedbackCount > 0 && (
-            <span className="ml-2 font-mono text-sm font-normal text-muted-foreground">
-              {stats.feedbackCount}
-            </span>
-          )}
-        </h2>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">
+            Feedback
+            {stats.feedbackCount > 0 && (
+              <span className="ml-2 font-mono text-sm font-normal text-muted-foreground">
+                {stats.feedbackCount}
+              </span>
+            )}
+          </h2>
+          <p className="text-xs text-muted-foreground">Filter, note, and resolve</p>
+        </div>
 
-        {stats.feedback.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border p-10 text-center">
-            <p className="text-sm text-muted-foreground">
-              No feedback yet. Once students start sharing, it will show up here.
-            </p>
-          </div>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {stats.feedback.map((f) => (
-              <li key={f.id} className="rounded-2xl border border-border bg-card p-5">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-0.5" aria-label={f.rating ? `${f.rating} out of 5` : 'No rating'}>
-                    {f.rating ? (
-                      Array.from({ length: 5 }).map((_, i) => (
-                        <Star
-                          key={i}
-                          className={
-                            'size-4 ' +
-                            (i < f.rating!
-                              ? 'fill-caution text-caution'
-                              : 'fill-transparent text-muted-foreground/40')
-                          }
-                        />
-                      ))
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No rating</span>
-                    )}
-                  </div>
-                  <time className="shrink-0 font-mono text-xs text-muted-foreground">
-                    {formatDate(f.createdAt)}
-                  </time>
-                </div>
-                <p className="text-sm leading-relaxed text-pretty">{f.message}</p>
-              </li>
-            ))}
-          </ul>
-        )}
+        <FeedbackManager initial={stats.feedback} />
       </section>
     </main>
   )

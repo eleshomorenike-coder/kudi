@@ -16,6 +16,10 @@ export interface Account {
   createdAt: string
   /** Whether the user opted in to browser notifications. */
   notifyOptIn: boolean
+  /** Premium unlocks bank auto-sync. Simulated upgrade in this build. */
+  premium: boolean
+  /** When the user upgraded (ISO), or null on the free plan. */
+  premiumSince: string | null
 }
 
 interface StoredAccount extends Account {
@@ -29,6 +33,10 @@ interface AuthValue {
   logIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>
   logOut: () => void
   updateProfile: (patch: Partial<Pick<Account, 'name' | 'notifyOptIn'>>) => void
+  /** Simulated premium upgrade — unlocks bank auto-sync. */
+  upgradeToPremium: () => void
+  /** Cancel premium and return to the free plan. */
+  cancelPremium: () => void
 }
 
 const USERS_KEY = 'kudi.users.v1'
@@ -75,7 +83,12 @@ function writeUsers(users: StoredAccount[]) {
 
 function strip(u: StoredAccount): Account {
   const { passwordHash: _passwordHash, ...rest } = u
-  return rest
+  // Backfill fields for accounts created before they existed.
+  return {
+    ...rest,
+    premium: rest.premium ?? false,
+    premiumSince: rest.premiumSince ?? null,
+  }
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -117,6 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         email: cleanEmail,
         createdAt: new Date().toISOString(),
         notifyOptIn: false,
+        premium: false,
+        premiumSince: null,
         passwordHash: await hashPassword(password),
       }
       writeUsers([...users, account])
@@ -152,6 +167,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           u.id === current.id ? { ...u, ...patch } : u,
         )
         writeUsers(users)
+        return next
+      })
+    },
+    upgradeToPremium() {
+      setUser((current) => {
+        if (!current) return current
+        const patch = { premium: true, premiumSince: new Date().toISOString() }
+        const next = { ...current, ...patch }
+        writeUsers(readUsers().map((u) => (u.id === current.id ? { ...u, ...patch } : u)))
+        return next
+      })
+    },
+    cancelPremium() {
+      setUser((current) => {
+        if (!current) return current
+        const patch = { premium: false, premiumSince: null }
+        const next = { ...current, ...patch }
+        writeUsers(readUsers().map((u) => (u.id === current.id ? { ...u, ...patch } : u)))
         return next
       })
     },
