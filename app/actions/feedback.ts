@@ -2,6 +2,7 @@
 
 import { db } from '@/lib/db'
 import { feedback } from '@/lib/db/schema'
+import { sendFeedbackAlert } from '@/lib/email'
 
 export interface SubmitFeedbackInput {
   deviceId: string
@@ -23,12 +24,18 @@ export async function submitFeedback(input: SubmitFeedbackInput) {
       ? Math.round(input.rating)
       : null
 
+  const deviceId = input.deviceId || null
+
   try {
     await db.insert(feedback).values({
-      deviceId: input.deviceId || null,
+      deviceId,
       rating,
       message,
     })
+
+    // Best-effort owner alert. Never let an email failure fail the submission.
+    void sendFeedbackAlert({ rating, message, deviceId })
+
     return { ok: true as const }
   } catch (err) {
     console.log('[v0] submitFeedback error:', err instanceof Error ? err.message : err)
