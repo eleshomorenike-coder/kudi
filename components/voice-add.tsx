@@ -10,7 +10,7 @@ import { parseSpokenExpense } from '@/lib/voice'
 import { type CategoryId } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
-/* --- Minimal typings for the Web Speech API (not in lib.dom by default) --- */
+/* --- Minimal typings for the Web Speech API --- */
 interface SpeechRecognitionResultLike {
   0: { transcript: string }
   isFinal: boolean
@@ -43,7 +43,7 @@ type Draft = { amount: string; category: CategoryId; note: string }
 
 export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
   const { addExpense, setup, expenses, categories } = useStore()
-  const [supported, setSupported] = useState(true)
+  const [supported, setSupported] = useState(() => getRecognitionCtor() !== null)
   const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -55,7 +55,6 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
   const remaining = setup ? remainingBudget(setup, expenses) : Infinity
 
   useEffect(() => {
-    setSupported(getRecognitionCtor() !== null)
     return () => recognitionRef.current?.stop()
   }, [])
 
@@ -154,14 +153,13 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
       <div className="flex flex-col items-center gap-2 rounded-xl bg-muted px-4 py-6 text-center">
         <MicOff className="size-5 text-muted-foreground" />
         <p className="text-sm text-muted-foreground text-pretty">
-          Voice input isn&apos;t supported in this browser. Try the Type tab, or use Chrome
-          on your phone.
+          Voice dictation isn&apos;t supported in this browser. Try typing or use Chrome on your phone.
         </p>
       </div>
     )
   }
 
-  // Confirmation step — user reviews/corrects what we heard before logging.
+  // Confirmation step — user reviews/corrects what was heard before logging.
   if (draft) {
     const value = Number(draft.amount) || 0
     const wouldExceed = value > remaining
@@ -169,7 +167,7 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
       <div className="flex flex-col gap-4">
         <div className="rounded-xl bg-muted px-4 py-3">
           <p className="text-xs font-medium text-muted-foreground">You said</p>
-          <p className="text-sm text-pretty">&ldquo;{transcript}&rdquo;</p>
+          <p className="text-sm font-medium text-pretty">&ldquo;{transcript}&rdquo;</p>
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row">
@@ -204,7 +202,7 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
               type="button"
               onClick={() => setDraft({ ...draft, category: c.id })}
               className={cn(
-                'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                'rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
                 draft.category === c.id
                   ? 'border-primary bg-primary text-primary-foreground'
                   : 'border-border bg-background hover:bg-muted',
@@ -216,7 +214,7 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
         </div>
 
         {(blocked || wouldExceed) && (
-          <p className="rounded-lg bg-danger/12 px-3 py-2 text-sm font-medium text-danger text-pretty">
+          <p className="rounded-lg bg-danger/12 px-3 py-2 text-xs font-medium text-danger text-pretty">
             {blocked ??
               `This is over your remaining budget of ${formatNaira(remaining)} for the period. Adjust the amount to log it.`}
           </p>
@@ -233,11 +231,11 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
           </Button>
           <Button
             type="button"
-            className="flex-1"
+            className="flex-1 font-semibold"
             onClick={confirm}
             disabled={value <= 0 || wouldExceed}
           >
-            <Check className="size-4" /> Log {value > 0 ? formatNaira(value) : 'expense'}
+            <Check className="size-4" /> Log {value > 0 ? formatNaira(value) : 'Expense'}
           </Button>
         </div>
       </div>
@@ -246,16 +244,16 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
 
   // Idle / listening step.
   return (
-    <div className="flex flex-col items-center gap-4 py-2">
+    <div className="flex flex-col items-center gap-4 py-3">
       <button
         type="button"
         onClick={listening ? stop : start}
         aria-label={listening ? 'Stop listening' : 'Start voice input'}
         className={cn(
-          'relative flex size-20 items-center justify-center rounded-full transition-colors',
+          'relative flex size-20 items-center justify-center rounded-full transition-all shadow-md',
           listening
-            ? 'bg-danger text-danger-foreground'
-            : 'bg-primary text-primary-foreground hover:opacity-90',
+            ? 'bg-danger text-danger-foreground scale-105'
+            : 'bg-primary text-primary-foreground hover:scale-105',
         )}
       >
         {listening && (
@@ -266,31 +264,31 @@ export function VoiceAdd({ onAdded }: { onAdded?: () => void }) {
 
       <div className="text-center">
         {justAdded ? (
-          <p className="flex items-center justify-center gap-1.5 text-sm font-medium text-safe">
-            <Check className="size-4" /> Logged!
+          <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-safe">
+            <Check className="size-4" /> Logged successfully!
           </p>
         ) : listening ? (
-          <p className="flex items-center justify-center gap-1.5 text-sm font-medium">
-            <Loader2 className="size-4 animate-spin" /> Listening… just talk
+          <p className="flex items-center justify-center gap-1.5 text-sm font-semibold">
+            <Loader2 className="size-4 animate-spin" /> Listening… speak naturally
           </p>
         ) : (
-          <p className="text-sm font-medium">Tap and tell me what you spent</p>
+          <p className="text-sm font-semibold">Tap the mic to dictate your spend</p>
         )}
-        <p className="mt-1 text-xs text-muted-foreground text-pretty">
+        <p className="mt-1 text-xs text-muted-foreground text-pretty max-w-xs mx-auto">
           {listening
-            ? 'e.g. "I spent 1,500 on lunch"'
-            : 'Too tired to type? Say it out loud — I\u2019ll sort out the amount and category.'}
+            ? 'Say something like "I spent 1,500 on lunch at campus canteen"'
+            : 'Say what you spent and KUDI will automatically detect the amount & category.'}
         </p>
       </div>
 
       {transcript && listening && (
-        <p className="max-w-full rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground text-pretty">
+        <p className="max-w-full rounded-xl bg-muted px-3.5 py-2 text-xs font-mono text-foreground text-pretty">
           {transcript}
         </p>
       )}
 
       {error && (
-        <p className="rounded-lg bg-caution/15 px-3 py-2 text-sm font-medium text-caution text-pretty">
+        <p className="rounded-lg bg-caution/15 px-3 py-2 text-xs font-medium text-caution text-pretty">
           {error}
         </p>
       )}

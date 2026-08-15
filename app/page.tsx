@@ -28,7 +28,7 @@ function AuthGate() {
   if (!user) return <AuthScreen />
 
   return (
-    <StoreProvider userId={user.id}>
+    <StoreProvider key={user.id} userId={user.id}>
       <BudgetRoot />
     </StoreProvider>
   )

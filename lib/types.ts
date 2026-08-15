@@ -108,6 +108,73 @@ export interface SavingsGoal {
   saved: number
 }
 
+export type SavingsActionType = 'manual' | 'rollover' | 'challenge' | 'boost'
+
+export interface SavingsEntry {
+  id: string
+  amount: number
+  note: string
+  date: string // ISO datetime
+  type: SavingsActionType
+  xpEarned: number
+}
+
+export interface SavingsChallenge {
+  id: string
+  title: string
+  description: string
+  targetAmount: number
+  daysDuration: number
+  xpReward: number
+  category: 'habit' | 'sprint' | 'budget' | 'lifestyle'
+  icon: string
+  tag: string
+}
+
+export interface UserChallengeProgress {
+  challengeId: string
+  currentAmount: number
+  startedAt: string // ISO datetime
+  completedAt?: string | null // ISO datetime
+  status: 'active' | 'completed' | 'abandoned'
+}
+
+export type BadgeTier = 'bronze' | 'silver' | 'gold' | 'diamond'
+
+export interface SavingsBadge {
+  id: string
+  name: string
+  description: string
+  icon: string
+  tier: BadgeTier
+  xp: number
+  criteria: string
+}
+
+export type SaverTier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond'
+
+export interface SaverLevelInfo {
+  level: number
+  title: SaverTier
+  currentXp: number
+  minXp: number
+  maxXp: number
+  progressPct: number
+  nextTitle?: SaverTier
+}
+
+export interface IncentiveProfile {
+  xp: number
+  savingsStreak: number
+  lastSavedDate: string | null // ISO datetime
+  totalSavedAllTime: number
+  rolloverCount: number
+  history: SavingsEntry[]
+  activeChallenges: UserChallengeProgress[]
+  completedChallengeIds: string[]
+  unlockedBadgeIds: string[]
+}
+
 export interface AppState {
   setup: BudgetSetup | null
   expenses: Expense[]
@@ -116,4 +183,7 @@ export interface AppState {
   categories: CategoryMeta[]
   /** Linked bank account for premium auto-import (null when not connected). */
   bank: BankConnection | null
+  /** Gamified incentives and savings progress. */
+  incentives: IncentiveProfile
 }
+

@@ -8,6 +8,7 @@ import { colorValue } from '@/components/category-visuals'
 import { useStore } from '@/lib/store'
 import {
   expensesInCurrentPeriod,
+  extraSavingsInCurrentPeriod,
   flexiblePool,
   formatNaira,
   periodProgress,
@@ -17,9 +18,9 @@ import { buildSummary, categoryLabel } from '@/lib/insights'
 import { cn } from '@/lib/utils'
 
 export function Summary() {
-  const { setup, expenses, categories } = useStore()
+  const { setup, expenses, categories, incentives } = useStore()
 
-  const summary = useMemo(() => (setup ? buildSummary(setup, expenses) : null), [setup, expenses])
+  const summary = useMemo(() => (setup ? buildSummary(setup, expenses, new Date(), incentives.history) : null), [setup, expenses, incentives.history])
 
   // Last 6 weeks trend of total weekly spend.
   const weekly = useMemo(() => {
@@ -60,7 +61,7 @@ export function Summary() {
       <Card className="overflow-hidden border-0 bg-primary p-6 text-primary-foreground">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium opacity-90">Spent this period</p>
-          <span className="rounded-full bg-black/10 px-2.5 py-1 text-xs font-semibold">
+          <span className="text-xs font-semibold opacity-90">
             {progress.daysElapsed + 1} / {progress.totalDays} days
           </span>
         </div>
@@ -98,7 +99,18 @@ export function Summary() {
         <StatTile
           icon={<TrendingUp className="size-4" />}
           label="Flexible left"
-          value={formatNaira(Math.max(flexPool - periodSpent, 0), { compact: true })}
+          value={formatNaira(
+            Math.max(
+              flexPool -
+                periodExpenses
+                  .filter((e) => !['food', 'transport', 'data', 'school', 'personal'].includes(e.category))
+                  .reduce((s, e) => s + e.amount, 0) -
+                extraSavingsInCurrentPeriod(setup, incentives.history).beforeToday -
+                extraSavingsInCurrentPeriod(setup, incentives.history).today,
+              0
+            ),
+            { compact: true }
+          )}
         />
       </div>
 

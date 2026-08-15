@@ -1,11 +1,20 @@
-import type { BudgetSetup, CategoryMeta, Expense, SavingsGoal } from './types'
+import type {
+  BudgetSetup,
+  CategoryMeta,
+  Expense,
+  IncentiveProfile,
+  SavingsEntry,
+  SavingsGoal,
+} from './types'
 import {
   computeDailyStatus,
   computeStreaks,
   expensesInCurrentPeriod,
+  extraSavingsInCurrentPeriod,
   flexiblePool,
   formatNaira,
   periodProgress,
+  remainingBudget,
   spendablePool,
   spentByCategory,
   totalSpent,
@@ -170,16 +179,17 @@ export function generateAdvice(
   setup: BudgetSetup,
   expenses: Expense[],
   goal: SavingsGoal | null,
+  incentives?: IncentiveProfile | null,
   now = new Date(),
 ): Advice[] {
   const advice: Advice[] = []
-  const status = computeDailyStatus(setup, expenses, now)
+  const status = computeDailyStatus(setup, expenses, now, incentives?.history ?? [])
   const progress = periodProgress(setup, now)
   const streaks = computeStreaks(expenses, now)
   const pool = spendablePool(setup)
   const periodExpenses = expensesInCurrentPeriod(setup, expenses, now)
   const spentSoFar = periodExpenses.reduce((s, e) => s + e.amount, 0)
-  const remaining = Math.max(pool - spentSoFar, 0)
+  const remaining = remainingBudget(setup, expenses, now, incentives?.history ?? [])
 
   // 1. Today's pace
   advice.push({
@@ -194,7 +204,18 @@ export function generateAdvice(
     detail: status.message,
   })
 
-  // 2. Runway — will the money last the period?
+  // 2. Daily surplus sweep recommendation (if applicable)
+  const surplus = Math.max(0, Math.floor(status.remainingToday))
+  if (surplus >= 500 && status.level === 'safe') {
+    advice.push({
+      id: 'rollover-tip',
+      tone: 'positive',
+      title: `Sweep today's ${formatNaira(surplus)} into savings`,
+      detail: `You have extra safe allowance left today. Sweeping it into your savings pot locks in your streak and earns +50 bonus XP!`,
+    })
+  }
+
+  // 3. Runway — will the money last the period?
   const dailyAllowance = status.adaptiveDailyLimit
   if (progress.daysRemaining > 0) {
     const burnRate = progress.daysElapsed > 0 ? spentSoFar / Math.max(progress.daysElapsed, 1) : 0
@@ -216,7 +237,7 @@ export function generateAdvice(
     }
   }
 
-  // 3. Savings
+  // 4. Savings & Incentives
   if (goal) {
     const pct = goal.target > 0 ? goal.saved / goal.target : 0
     if (pct >= 1) {
@@ -243,7 +264,7 @@ export function generateAdvice(
     })
   }
 
-  // 4. Habit / streak
+  // 5. Habit / streak
   if (streaks.trackingStreak >= 3) {
     advice.push({
       id: 'streak',
@@ -260,7 +281,7 @@ export function generateAdvice(
     })
   }
 
-  // 5. Buffer health
+  // 6. Buffer health
   if (remaining < dailyAllowance && progress.daysRemaining > 1) {
     advice.push({
       id: 'buffer',
@@ -297,6 +318,7 @@ export function buildSummary(
   setup: BudgetSetup,
   expenses: Expense[],
   now = new Date(),
+  savings: SavingsEntry[] = [],
 ): ExpenseSummary {
   const periodExpenses = expensesInCurrentPeriod(setup, expenses, now)
   const totalThisPeriod = periodExpenses.reduce((s, e) => s + e.amount, 0)
@@ -316,7 +338,11 @@ export function buildSummary(
   )
 
   const pool = flexiblePool(setup)
-  const flexRemaining = Math.max(pool - totalThisPeriod, 0)
+  const flexibleSpent = periodExpenses
+    .filter((e) => !['food', 'transport', 'data', 'school', 'personal'].includes(e.category))
+    .reduce((s, e) => s + e.amount, 0)
+  const { beforeToday, today } = extraSavingsInCurrentPeriod(setup, savings, now)
+  const flexRemaining = Math.max(pool - flexibleSpent - beforeToday - today, 0)
 
   return {
     totalAllTime,

@@ -14,10 +14,21 @@ import type {
   BudgetSetup,
   CategoryMeta,
   Expense,
+  IncentiveProfile,
+  SavingsActionType,
+  SavingsEntry,
   SavingsGoal,
+  UserChallengeProgress,
 } from './types'
 import { DEFAULT_CATEGORIES } from './types'
-import { remainingBudget } from './finance'
+import { computeDailyStatus, remainingBudget } from './finance'
+import {
+  DEFAULT_INCENTIVES,
+  SAVINGS_CHALLENGES,
+  calculateSavingsStreak,
+  calculateXpForAction,
+  evaluateBadges,
+} from './incentives'
 import { getDeviceId } from './device-id'
 import { recordUsage } from '@/app/actions/usage'
 
@@ -44,7 +55,16 @@ interface StoreValue extends AppState {
   ) => AddExpenseResult
   deleteExpense: (id: string) => void
   setGoal: (goal: SavingsGoal | null) => void
-  addToSavings: (amount: number) => void
+  addToSavings: (
+    amount: number,
+    note?: string,
+    type?: SavingsActionType,
+  ) => void
+  /** Sweeps today's unspent safe daily budget into savings for +50 bonus XP. Returns amount saved. */
+  sweepDailyRollover: () => number
+  startChallenge: (challengeId: string) => void
+  contributeToChallenge: (challengeId: string, amount: number) => void
+  claimChallengeReward: (challengeId: string) => void
   addCategory: (meta: Omit<CategoryMeta, 'id' | 'builtin'>) => void
   updateCategory: (id: string, patch: Partial<Omit<CategoryMeta, 'id' | 'builtin'>>) => void
   deleteCategory: (id: string) => void
@@ -74,17 +94,39 @@ const emptyState: AppState = {
   goal: null,
   categories: DEFAULT_CATEGORIES,
   bank: null,
+  incentives: DEFAULT_INCENTIVES,
 }
 
 /** Backfills fields for accounts created before newer features existed. */
 function hydrate(state: AppState): AppState {
+  if (!state || typeof state !== 'object') {
+    return emptyState
+  }
+
+  const inc = state.incentives || DEFAULT_INCENTIVES
+  const safeIncentives: IncentiveProfile = {
+    ...DEFAULT_INCENTIVES,
+    ...inc,
+    history: Array.isArray(inc.history) ? inc.history : [],
+    activeChallenges: Array.isArray(inc.activeChallenges) ? inc.activeChallenges : [],
+    completedChallengeIds: Array.isArray(inc.completedChallengeIds) ? inc.completedChallengeIds : [],
+    unlockedBadgeIds: Array.isArray(inc.unlockedBadgeIds) ? inc.unlockedBadgeIds : [],
+  }
+
+  // Ensure badges are evaluated
+  safeIncentives.unlockedBadgeIds = evaluateBadges(safeIncentives, state.goal ?? null)
+  safeIncentives.savingsStreak = calculateSavingsStreak(safeIncentives.history)
+
   return {
-    ...state,
+    setup: state.setup ?? null,
+    expenses: Array.isArray(state.expenses) ? state.expenses : [],
+    goal: state.goal ?? null,
     categories:
       Array.isArray(state.categories) && state.categories.length > 0
         ? state.categories
         : DEFAULT_CATEGORIES,
     bank: state.bank ?? null,
+    incentives: safeIncentives,
   }
 }
 
@@ -95,37 +137,35 @@ export function StoreProvider({
   children: ReactNode
   userId?: string
 }) {
-  const [state, setState] = useState<AppState>(emptyState)
-  const [ready, setReady] = useState(false)
-
-  // Load (and reload when the signed-in account changes) that user's data.
-  useEffect(() => {
-    setReady(false)
+  // Load the signed-in user's data synchronously. The provider only mounts
+  // client-side after auth resolves, so localStorage is always available.
+  const [state, setState] = useState<AppState>(() => {
     try {
       const raw = localStorage.getItem(storageKey(userId))
-      setState(raw ? hydrate(JSON.parse(raw)) : emptyState)
+      return raw ? hydrate(JSON.parse(raw)) : emptyState
     } catch {
-      setState(emptyState)
+      return emptyState
     }
-    setReady(true)
+  })
 
-    // Record an anonymous "visit" once per device (server de-dupes repeats).
-    const deviceId = getDeviceId()
-    if (deviceId) void recordUsage(deviceId, 'visit')
-  }, [userId])
-
+  // Persist every state change to localStorage.
   useEffect(() => {
-    if (!ready) return
     try {
       localStorage.setItem(storageKey(userId), JSON.stringify(state))
     } catch {
       // storage may be unavailable
     }
-  }, [state, ready, userId])
+  }, [state, userId])
+
+  // Record an anonymous "visit" once per device (server de-dupes repeats).
+  useEffect(() => {
+    const deviceId = getDeviceId()
+    if (deviceId) void recordUsage(deviceId, 'visit')
+  }, [])
 
   const value: StoreValue = {
     ...state,
-    ready,
+    ready: true,
     saveSetup: (setup) => {
       setState((s) => ({ ...s, setup }))
       // Count this device as an activated user (once, server de-dupes).
@@ -136,7 +176,7 @@ export function StoreProvider({
       // Enforce the hard budget cap: never let a spend push the period total
       // past what the student is actually allowed to spend.
       if (state.setup) {
-        const remaining = remainingBudget(state.setup, state.expenses)
+        const remaining = remainingBudget(state.setup, state.expenses, new Date(), state.incentives.history)
         if (expense.amount > remaining) {
           return { ok: false, remaining, attempted: expense.amount }
         }
@@ -177,13 +217,125 @@ export function StoreProvider({
     },
     deleteExpense: (id) =>
       setState((s) => ({ ...s, expenses: s.expenses.filter((e) => e.id !== id) })),
-    setGoal: (goal) => setState((s) => ({ ...s, goal })),
-    addToSavings: (amount) =>
-      setState((s) =>
-        s.goal
-          ? { ...s, goal: { ...s.goal, saved: Math.max(0, s.goal.saved + amount) } }
-          : s,
-      ),
+    setGoal: (goal) =>
+      setState((s) => {
+        const nextIncentives = { ...s.incentives }
+        nextIncentives.unlockedBadgeIds = evaluateBadges(nextIncentives, goal)
+        return { ...s, goal, incentives: nextIncentives }
+      }),
+    addToSavings: (amount, note, type = 'manual') =>
+      setState((s) => {
+        const safeAmount = Math.max(0, amount)
+        if (safeAmount <= 0) return s
+
+        const xpEarned = calculateXpForAction(safeAmount, type)
+        const newEntry: SavingsEntry = {
+          id: uid(),
+          amount: safeAmount,
+          note: note || (type === 'rollover' ? 'Daily budget surplus swept' : 'Saved to goal'),
+          date: new Date().toISOString(),
+          type,
+          xpEarned,
+        }
+
+        const nextHistory = [newEntry, ...s.incentives.history]
+        const nextTotalSaved = s.incentives.totalSavedAllTime + safeAmount
+        const nextStreak = calculateSavingsStreak(nextHistory)
+        const nextXp = s.incentives.xp + xpEarned
+        const nextRollovers = type === 'rollover' ? s.incentives.rolloverCount + 1 : s.incentives.rolloverCount
+
+        // Update active challenges progress
+        const nextChallenges = s.incentives.activeChallenges.map((c) => {
+          if (c.status !== 'active') return c
+          const def = SAVINGS_CHALLENGES.find((item) => item.id === c.challengeId)
+          const newAmt = c.currentAmount + safeAmount
+          const isDone = def ? newAmt >= def.targetAmount : false
+          return {
+            ...c,
+            currentAmount: newAmt,
+            status: isDone ? ('completed' as const) : c.status,
+            completedAt: isDone ? new Date().toISOString() : c.completedAt,
+          }
+        })
+
+        const nextGoal = s.goal
+          ? { ...s.goal, saved: s.goal.saved + safeAmount }
+          : { name: 'Emergency Fund', target: 20000, saved: safeAmount }
+
+        const nextIncentives: IncentiveProfile = {
+          ...s.incentives,
+          xp: nextXp,
+          totalSavedAllTime: nextTotalSaved,
+          history: nextHistory,
+          savingsStreak: Math.max(nextStreak, s.incentives.savingsStreak),
+          lastSavedDate: newEntry.date,
+          rolloverCount: nextRollovers,
+          activeChallenges: nextChallenges,
+          unlockedBadgeIds: [],
+        }
+
+        nextIncentives.unlockedBadgeIds = evaluateBadges(nextIncentives, nextGoal)
+
+        return {
+          ...s,
+          goal: nextGoal,
+          incentives: nextIncentives,
+        }
+      }),
+    sweepDailyRollover: () => {
+      if (!state.setup) return 0
+      const status = computeDailyStatus(state.setup, state.expenses, new Date(), state.incentives.history)
+      const leftover = Math.max(0, Math.floor(status.remainingToday))
+      if (leftover <= 0) return 0
+
+      value.addToSavings(leftover, `Daily budget surplus (+50 XP)`, 'rollover')
+      return leftover
+    },
+    startChallenge: (challengeId) =>
+      setState((s) => {
+        if (s.incentives.activeChallenges.some((c) => c.challengeId === challengeId && c.status === 'active')) {
+          return s
+        }
+        const fresh: UserChallengeProgress = {
+          challengeId,
+          currentAmount: 0,
+          startedAt: new Date().toISOString(),
+          status: 'active',
+        }
+        return {
+          ...s,
+          incentives: {
+            ...s.incentives,
+            activeChallenges: [fresh, ...s.incentives.activeChallenges.filter((c) => c.challengeId !== challengeId)],
+          },
+        }
+      }),
+    contributeToChallenge: (challengeId, amount) => {
+      value.addToSavings(amount, `Challenge progress: ${challengeId}`, 'challenge')
+    },
+    claimChallengeReward: (challengeId) =>
+      setState((s) => {
+        const ch = s.incentives.activeChallenges.find((c) => c.challengeId === challengeId)
+        if (!ch || ch.status !== 'completed' || s.incentives.completedChallengeIds.includes(challengeId)) {
+          return s
+        }
+        const def = SAVINGS_CHALLENGES.find((item) => item.id === challengeId)
+        const bonusXp = def ? def.xpReward : 200
+
+        const nextCompleted = [...s.incentives.completedChallengeIds, challengeId]
+        const nextIncentives: IncentiveProfile = {
+          ...s.incentives,
+          xp: s.incentives.xp + bonusXp,
+          completedChallengeIds: nextCompleted,
+          unlockedBadgeIds: [],
+        }
+        nextIncentives.unlockedBadgeIds = evaluateBadges(nextIncentives, s.goal)
+
+        return {
+          ...s,
+          incentives: nextIncentives,
+        }
+      }),
     addCategory: (meta) =>
       setState((s) => {
         // Slug the label into a stable, unique id.
@@ -214,11 +366,12 @@ export function StoreProvider({
     connectBank: (connection) => setState((s) => ({ ...s, bank: connection })),
     disconnectBank: () => setState((s) => ({ ...s, bank: null })),
     importTransactions: (txns) => {
-      let added = 0
+      const existing = new Set(state.expenses.map((e) => e.id))
+      const added = txns.filter((t) => !existing.has(t.id)).length
       setState((s) => {
-        const existing = new Set(s.expenses.map((e) => e.id))
+        const existingIds = new Set(s.expenses.map((e) => e.id))
         const fresh: Expense[] = txns
-          .filter((t) => !existing.has(t.id))
+          .filter((t) => !existingIds.has(t.id))
           .map((t) => ({
             id: t.id,
             amount: t.amount,
@@ -227,7 +380,6 @@ export function StoreProvider({
             date: t.date,
             source: 'bank' as const,
           }))
-        added = fresh.length
         return {
           ...s,
           expenses: [...fresh, ...s.expenses].sort(
@@ -308,7 +460,62 @@ function makeDemoData(): AppState {
     }
   })
 
-  const goal: SavingsGoal = { name: 'Textbooks for next semester', target: 20000, saved: 5000 }
+  const goal: SavingsGoal = { name: 'Textbooks for next semester', target: 20000, saved: 7500 }
 
-  return { setup, expenses, goal, categories: DEFAULT_CATEGORIES, bank: null }
+  const history: SavingsEntry[] = [
+    {
+      id: 'demo-s-1',
+      amount: 2000,
+      note: 'Weekend surplus sweep',
+      date: new Date(now.getTime() - 86400000 * 3).toISOString(),
+      type: 'rollover',
+      xpEarned: 70,
+    },
+    {
+      id: 'demo-s-2',
+      amount: 3000,
+      note: 'Allowance savings target',
+      date: new Date(now.getTime() - 86400000 * 5).toISOString(),
+      type: 'manual',
+      xpEarned: 30,
+    },
+    {
+      id: 'demo-s-3',
+      amount: 1500,
+      note: 'Skipped Friday outing',
+      date: new Date(now.getTime() - 86400000 * 2).toISOString(),
+      type: 'boost',
+      xpEarned: 30,
+    },
+    {
+      id: 'demo-s-4',
+      amount: 1000,
+      note: 'Daily allowance leftover',
+      date: new Date(now.getTime() - 86400000).toISOString(),
+      type: 'rollover',
+      xpEarned: 60,
+    },
+  ]
+
+  const demoIncentives: IncentiveProfile = {
+    xp: 440,
+    savingsStreak: 4,
+    lastSavedDate: new Date(now.getTime() - 86400000).toISOString(),
+    totalSavedAllTime: 7500,
+    rolloverCount: 2,
+    history,
+    activeChallenges: [
+      {
+        challengeId: 'habit-7-day',
+        currentAmount: 2500,
+        startedAt: new Date(now.getTime() - 86400000 * 4).toISOString(),
+        status: 'active',
+      },
+    ],
+    completedChallengeIds: [],
+    unlockedBadgeIds: ['first-seed', 'streak-starter', 'rollover-rookie'],
+  }
+
+  return { setup, expenses, goal, categories: DEFAULT_CATEGORIES, bank: null, incentives: demoIncentives }
 }
+

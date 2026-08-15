@@ -80,7 +80,7 @@ export function Leaks() {
         </div>
         <ul className="flex flex-col gap-3">
           {categories.map((c) => {
-            const spent = byCat[c.id]
+            const spent = byCat[c.id] || 0
             const pct = weekTotal > 0 ? (spent / weekTotal) * 100 : 0
             return (
               <li key={c.id}>

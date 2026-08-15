@@ -3,6 +3,7 @@ import type {
   CategoryId,
   Expense,
   Period,
+  SavingsEntry,
 } from './types'
 import { ESSENTIAL_CATEGORIES } from './types'
 
@@ -70,13 +71,15 @@ export function remainingBudget(
   setup: BudgetSetup,
   expenses: Expense[],
   now = new Date(),
+  savings: SavingsEntry[] = [],
 ): number {
   const pool = spendablePool(setup)
   const spent = expensesInCurrentPeriod(setup, expenses, now).reduce(
     (s, e) => s + e.amount,
     0,
   )
-  return Math.max(pool - spent, 0)
+  const { beforeToday, today } = extraSavingsInCurrentPeriod(setup, savings, now)
+  return Math.max(pool - spent - beforeToday - today, 0)
 }
 
 export interface PeriodProgress {
@@ -109,6 +112,69 @@ export function expensesInCurrentPeriod(setup: BudgetSetup, expenses: Expense[],
     const d = new Date(e.date)
     return d >= start && d < end && d <= now
   })
+}
+
+export function savingsInCurrentPeriod(
+  setup: BudgetSetup,
+  savings: SavingsEntry[],
+  now = new Date(),
+): SavingsEntry[] {
+  const start = startOfDay(new Date(setup.startDate))
+  const end = new Date(start)
+  end.setDate(end.getDate() + periodDays(setup))
+  return savings.filter((s) => {
+    const d = new Date(s.date)
+    return d >= start && d < end && d <= now
+  })
+}
+
+export function extraSavingsInCurrentPeriod(
+  setup: BudgetSetup,
+  savings: SavingsEntry[],
+  now = new Date(),
+): { beforeToday: number; today: number } {
+  const periodSavings = savingsInCurrentPeriod(setup, savings, now)
+  
+  let beforeTodayManual = 0
+  let todayManual = 0
+  let beforeTodayExtra = 0
+  let todayExtra = 0
+  
+  for (const s of periodSavings) {
+    const isToday = isSameDay(new Date(s.date), now)
+    if (s.type === 'rollover' || s.type === 'boost' || s.type === 'challenge') {
+      if (isToday) {
+        todayExtra += s.amount
+      } else {
+        beforeTodayExtra += s.amount
+      }
+    } else if (s.type === 'manual') {
+      if (isToday) {
+        todayManual += s.amount
+      } else {
+        beforeTodayManual += s.amount
+      }
+    }
+  }
+  
+  const totalManual = beforeTodayManual + todayManual
+  const excessManual = Math.max(0, totalManual - setup.savingsTarget)
+  
+  let beforeTodayManualExcess = 0
+  let todayManualExcess = 0
+  
+  if (beforeTodayManual >= setup.savingsTarget) {
+    beforeTodayManualExcess = beforeTodayManual - setup.savingsTarget
+    todayManualExcess = todayManual
+  } else {
+    beforeTodayManualExcess = 0
+    todayManualExcess = Math.max(0, totalManual - setup.savingsTarget)
+  }
+  
+  return {
+    beforeToday: beforeTodayExtra + beforeTodayManualExcess,
+    today: todayExtra + todayManualExcess,
+  }
 }
 
 export function spentByCategory(expenses: Expense[]): Record<CategoryId, number> {
@@ -151,20 +217,26 @@ export function computeDailyStatus(
   setup: BudgetSetup,
   expenses: Expense[],
   now = new Date(),
+  savings: SavingsEntry[] = [],
 ): DailyStatus {
   const pool = spendablePool(setup)
   const progress = periodProgress(setup, now)
   const periodExpenses = expensesInCurrentPeriod(setup, expenses, now)
 
   const baseDaily = pool / progress.totalDays
-  const flexSpentSoFar = periodExpenses.reduce((s, e) => s + e.amount, 0)
-  const remainingPool = Math.max(pool - flexSpentSoFar, 0)
+  
+  const beforeTodayExpenses = periodExpenses.filter((e) => !isSameDay(new Date(e.date), now))
+  const spentBeforeToday = beforeTodayExpenses.reduce((s, e) => s + e.amount, 0)
+  
+  const { beforeToday, today: savedToday } = extraSavingsInCurrentPeriod(setup, savings, now)
+  
+  const remainingPool = Math.max(pool - spentBeforeToday - beforeToday, 0)
   const adaptiveDailyLimit = remainingPool / progress.daysRemaining
 
   const today = spentToday(expenses, now)
   const limit = adaptiveDailyLimit
-  const remainingToday = limit - today
-  const usedFraction = limit > 0 ? today / limit : today > 0 ? 1 : 0
+  const remainingToday = limit - today - savedToday
+  const usedFraction = limit > 0 ? (today + savedToday) / limit : (today + savedToday) > 0 ? 1 : 0
 
   let level: StatusLevel = 'safe'
   let message = ''
@@ -205,13 +277,15 @@ export function canIAfford(
   expenses: Expense[],
   amount: number,
   now = new Date(),
+  savings: SavingsEntry[] = [],
 ): AffordResult {
-  const status = computeDailyStatus(setup, expenses, now)
+  const status = computeDailyStatus(setup, expenses, now, savings)
   const progress = periodProgress(setup, now)
   const pool = spendablePool(setup)
   const periodExpenses = expensesInCurrentPeriod(setup, expenses, now)
   const spentSoFar = periodExpenses.reduce((s, e) => s + e.amount, 0)
-  const remainingPool = Math.max(pool - spentSoFar, 0)
+  const { beforeToday, today } = extraSavingsInCurrentPeriod(setup, savings, now)
+  const remainingPool = Math.max(pool - spentSoFar - beforeToday - today, 0)
 
   const afterToday = status.remainingToday - amount
   const daysOfAllowance = status.adaptiveDailyLimit > 0

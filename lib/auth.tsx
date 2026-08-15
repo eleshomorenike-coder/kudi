@@ -82,12 +82,14 @@ function writeUsers(users: StoredAccount[]) {
 }
 
 function strip(u: StoredAccount): Account {
-  const { passwordHash: _passwordHash, ...rest } = u
-  // Backfill fields for accounts created before they existed.
   return {
-    ...rest,
-    premium: rest.premium ?? false,
-    premiumSince: rest.premiumSince ?? null,
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    createdAt: u.createdAt,
+    notifyOptIn: u.notifyOptIn ?? false,
+    premium: u.premium ?? false,
+    premiumSince: u.premiumSince ?? null,
   }
 }
 
@@ -100,6 +102,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const sessionId = localStorage.getItem(SESSION_KEY)
       if (sessionId) {
         const found = readUsers().find((u) => u.id === sessionId)
+        // Restoring a session from localStorage must happen after the first
+        // render so SSR/hydration always matches (client then swaps in the
+        // signed-in tree once the effect runs).
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (found) setUser(strip(found))
       }
     } catch {

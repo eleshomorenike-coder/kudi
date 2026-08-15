@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Bell,
   BellOff,
@@ -10,16 +10,15 @@ import {
   Pencil,
   RotateCcw,
   ShieldCheck,
-  User,
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { useAuth } from '@/lib/auth'
 import { useStore } from '@/lib/store'
-import { computeStreaks, formatNaira, totalSpent } from '@/lib/finance'
+import { formatNaira, totalSpent } from '@/lib/finance'
+import { calculateLevel } from '@/lib/incentives'
 import {
   getPermission,
   requestPermission,
@@ -41,23 +40,20 @@ function initials(name: string): string {
 
 export function Profile() {
   const { user, logOut, updateProfile } = useAuth()
-  const { expenses, resetAll } = useStore()
+  const { expenses, resetAll, incentives } = useStore()
 
   const [editing, setEditing] = useState(false)
   const [nameDraft, setNameDraft] = useState(user?.name ?? '')
-  const [perm, setPerm] = useState<NotifyPermission>('default')
-
-  useEffect(() => {
-    setPerm(getPermission())
-  }, [])
+  const [perm, setPerm] = useState<NotifyPermission>(() => getPermission())
 
   if (!user) return null
 
-  const streaks = computeStreaks(expenses)
+  const levelInfo = calculateLevel(incentives.xp)
   const joined = new Date(user.createdAt).toLocaleDateString('en-NG', {
     month: 'long',
     year: 'numeric',
   })
+
 
   async function toggleNotifications() {
     // Turning off is just a preference change.
@@ -152,10 +148,11 @@ export function Profile() {
       </Card>
 
       {/* Quick stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Logged" value={String(expenses.length)} sub="entries" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Saver Tier" value={`L${levelInfo.level} ${levelInfo.title}`} sub={`${incentives.xp} XP`} />
+        <StatCard label="Trophies" value={String(incentives.unlockedBadgeIds.length)} sub="unlocked" />
+        <StatCard label="Streak" value={String(incentives.savingsStreak)} sub="days" />
         <StatCard label="Tracked" value={formatNaira(totalSpent(expenses), { compact: true })} sub="all time" />
-        <StatCard label="Streak" value={String(streaks.trackingStreak)} sub="days" />
       </div>
 
       {/* Notifications */}

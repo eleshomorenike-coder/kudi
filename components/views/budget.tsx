@@ -103,7 +103,7 @@ export function Budget() {
         <ul className="flex flex-col gap-4">
           {ESSENTIAL_CATEGORIES.map((c) => {
             const planned = setup.essentials[c.id as keyof typeof setup.essentials] || 0
-            const spent = byCat[c.id]
+            const spent = byCat[c.id] || 0
             const pct = planned > 0 ? (spent / planned) * 100 : 0
             const tone = pct > 100 ? 'danger' : pct > 85 ? 'caution' : 'safe'
             const left = planned - spent

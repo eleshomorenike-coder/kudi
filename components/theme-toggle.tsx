@@ -12,6 +12,9 @@ import { cn } from '@/lib/utils'
 export function ThemeToggle({ className }: { className?: string }) {
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  // Standard next-themes hydration guard: must flip *after* mount so the
+  // button never mismatches between server and client render.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setMounted(true), [])
 
   const isDark = mounted && resolvedTheme === 'dark'

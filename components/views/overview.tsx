@@ -4,17 +4,21 @@ import { useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
+  Flame,
   Keyboard,
   Mic,
   PiggyBank,
   Shield,
   TrendingUp,
+  Zap,
 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { StatusPill } from '@/components/status-pill'
 import { QuickAdd } from '@/components/quick-add'
 import { VoiceAdd } from '@/components/voice-add'
+import { AlertParserModal } from '@/components/alert-parser-modal'
 import { cn } from '@/lib/utils'
 import { useStore } from '@/lib/store'
 import type { ViewId } from '@/components/app-shell'
@@ -22,11 +26,13 @@ import {
   computeDailyStatus,
   detectLeaks,
   expensesInCurrentPeriod,
+  extraSavingsInCurrentPeriod,
   flexiblePool,
   formatNaira,
   periodProgress,
   spentByCategory,
 } from '@/lib/finance'
+import { calculateLevel } from '@/lib/incentives'
 
 const statusBg: Record<string, string> = {
   safe: 'bg-safe',
@@ -40,27 +46,35 @@ const statusFg: Record<string, string> = {
 }
 
 export function Overview({ goTo }: { goTo: (v: ViewId) => void }) {
-  const { setup, expenses, goal } = useStore()
-  const [logMode, setLogMode] = useState<'speak' | 'type'>('speak')
+  const { setup, expenses, goal, incentives } = useStore()
+  const [alertModalOpen, setAlertModalOpen] = useState(false)
+  const [inputMode, setInputMode] = useState<'type' | 'voice'>('type')
   if (!setup) return null
 
-  const status = computeDailyStatus(setup, expenses)
+  const status = computeDailyStatus(setup, expenses, new Date(), incentives.history)
   const pool = flexiblePool(setup)
   const periodExpenses = expensesInCurrentPeriod(setup, expenses)
-  const flexSpent = periodExpenses.reduce((s, e) => s + e.amount, 0)
-  const flexRemaining = Math.max(pool - flexSpent, 0)
+  const flexSpent = periodExpenses
+    .filter((e) => !['food', 'transport', 'data', 'school', 'personal'].includes(e.category))
+    .reduce((s, e) => s + e.amount, 0)
+  const { beforeToday, today } = extraSavingsInCurrentPeriod(setup, incentives.history)
+  const flexRemaining = Math.max(pool - flexSpent - beforeToday - today, 0)
   const progress = periodProgress(setup)
   const leaks = detectLeaks(setup, expenses)
   const byCat = spentByCategory(periodExpenses)
+  const levelInfo = calculateLevel(incentives.xp)
+  const surplusToday = Math.max(0, Math.floor(status.remainingToday))
 
   return (
     <div className="flex flex-col gap-5">
+      <AlertParserModal isOpen={alertModalOpen} onClose={() => setAlertModalOpen(false)} />
+
       {/* Hero daily limit */}
       <Card className={`overflow-hidden ${statusBg[status.level]} ${statusFg[status.level]} border-0`}>
         <div className="p-6 sm:p-7">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium opacity-90">Safe to spend today</p>
-            <span className="rounded-full bg-black/10 px-2.5 py-1 text-xs font-semibold">
+            <span className="text-xs font-semibold opacity-90">
               Day {progress.daysElapsed + 1} of {progress.totalDays}
             </span>
           </div>
@@ -84,38 +98,81 @@ export function Overview({ goTo }: { goTo: (v: ViewId) => void }) {
         </div>
       </Card>
 
+      {/* Saver Incentive & Streak Banner */}
+      <Card
+        onClick={() => goTo('savings')}
+        className="group cursor-pointer border-primary/20 bg-gradient-to-r from-primary/10 via-background to-accent/20 p-4 transition-all hover:border-primary/50"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground font-mono text-sm font-bold shadow-sm">
+              L{levelInfo.level}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm leading-tight">
+                  {levelInfo.title} Saver
+                </span>
+                <span className="flex items-center gap-0.5 font-mono text-xs font-bold text-caution">
+                  <Flame className="size-3.5" /> {incentives.savingsStreak}d streak
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {surplusToday > 0
+                  ? `₦${surplusToday.toLocaleString()} unspent today · Tap to sweep (+50 XP)`
+                  : `${levelInfo.currentXp} XP · ${incentives.unlockedBadgeIds.length} trophies unlocked`}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-xs font-semibold text-primary">
+            <span>Savings Hub</span>
+          </div>
+        </div>
+      </Card>
+
       {/* Quick add */}
       <Card className="p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="font-semibold">Log a spend</h2>
-          <div className="inline-flex rounded-full bg-muted p-0.5">
-            <button
-              type="button"
-              onClick={() => setLogMode('speak')}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
-                logMode === 'speak'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Mic className="size-3.5" /> Speak
-            </button>
-            <button
-              type="button"
-              onClick={() => setLogMode('type')}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
-                logMode === 'type'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              <Keyboard className="size-3.5" /> Type
-            </button>
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold">Log a spend</h2>
+            <div className="inline-flex rounded-full bg-muted p-0.5">
+              <button
+                type="button"
+                onClick={() => setInputMode('type')}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                  inputMode === 'type'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Keyboard className="size-3" /> Type
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode('voice')}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                  inputMode === 'voice'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                <Mic className="size-3" /> Voice
+              </button>
+            </div>
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAlertModalOpen(true)}
+            className="flex items-center gap-1.5 font-semibold text-primary border-primary/40 bg-primary/5 hover:bg-primary/10"
+          >
+            <Zap className="size-3.5" /> Paste Alert
+          </Button>
         </div>
-        {logMode === 'speak' ? <VoiceAdd /> : <QuickAdd />}
+        {inputMode === 'voice' ? <VoiceAdd /> : <QuickAdd />}
       </Card>
 
       {/* Buffers */}
@@ -155,9 +212,9 @@ export function Overview({ goTo }: { goTo: (v: ViewId) => void }) {
           </h2>
           <button
             onClick={() => goTo('leaks')}
-            className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            className="text-sm font-medium text-primary hover:underline"
           >
-            View all <ArrowRight className="size-3.5" />
+            View all
           </button>
         </div>
         {leaks.length === 0 ? (
@@ -188,15 +245,15 @@ export function Overview({ goTo }: { goTo: (v: ViewId) => void }) {
           <h2 className="font-semibold">Essentials this period</h2>
           <button
             onClick={() => goTo('budget')}
-            className="flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+            className="text-sm font-medium text-primary hover:underline"
           >
-            Full budget <ArrowRight className="size-3.5" />
+            Full budget
           </button>
         </div>
         <ul className="flex flex-col gap-3">
           {(['food', 'transport', 'data'] as const).map((id) => {
             const planned = setup.essentials[id]
-            const spent = byCat[id]
+            const spent = byCat[id] || 0
             const pct = planned > 0 ? (spent / planned) * 100 : 0
             const tone = pct > 100 ? 'danger' : pct > 85 ? 'caution' : 'primary'
             return (

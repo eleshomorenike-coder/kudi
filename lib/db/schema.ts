@@ -1,4 +1,4 @@
-import { integer, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core'
+import { integer, pgTable, serial, text, timestamp, unique } from 'drizzle-orm/pg-core'
 
 export const feedback = pgTable('feedback', {
   id: serial('id').primaryKey(),
@@ -18,4 +18,6 @@ export const usageEvent = pgTable('usage_event', {
   deviceId: text('device_id').notNull(),
   eventType: text('event_type').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (t) => [
+  unique('device_event_uniq').on(t.deviceId, t.eventType),
+])

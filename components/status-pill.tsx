@@ -35,13 +35,12 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-        s.bg,
+        'inline-flex items-center gap-1 text-xs font-semibold',
         s.text,
         className,
       )}
     >
-      <span className={cn('size-2 rounded-full', s.dot)} aria-hidden />
+      <span className={cn('size-1.5 rounded-full', s.dot)} aria-hidden />
       {label ?? s.label}
     </span>
   )

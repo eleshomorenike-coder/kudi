@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Info,
   Lightbulb,
-  Sparkles,
   TrendingUp,
   TriangleAlert,
 } from 'lucide-react'
@@ -44,11 +43,11 @@ const toneIcon: Record<AdviceTone, React.ComponentType<{ className?: string }>> 
 }
 
 export function Insights() {
-  const { setup, expenses, goal, categories } = useStore()
+  const { setup, expenses, goal, categories, incentives } = useStore()
 
   const advice = useMemo(
-    () => (setup ? generateAdvice(setup, expenses, goal) : []),
-    [setup, expenses, goal],
+    () => (setup ? generateAdvice(setup, expenses, goal, incentives) : []),
+    [setup, expenses, goal, incentives],
   )
   const patterns = useMemo(
     () => spendingPatterns(expenses, categories),
@@ -94,7 +93,7 @@ export function Insights() {
 
         {patterns.length === 0 ? (
           <Card className="flex items-center gap-3 p-5">
-            <Sparkles className="size-5 shrink-0 text-primary" />
+            <Info className="size-5 shrink-0 text-primary" />
             <p className="text-sm text-muted-foreground text-pretty">
               {hasData
                 ? 'Keep logging for a few more days and clear patterns will start to appear here.'

@@ -18,6 +18,7 @@ import {
   Wallet,
   Wallet2,
   X,
+  Zap,
 } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
@@ -42,6 +43,7 @@ export type ViewId =
   | 'overview'
   | 'summary'
   | 'expenses'
+  | 'auto-track'
   | 'calendar'
   | 'insights'
   | 'afford'
@@ -57,6 +59,7 @@ const nav: NavItem[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'summary', label: 'Summary', icon: PieChart },
   { id: 'expenses', label: 'Expenses', icon: Receipt },
+  { id: 'auto-track', label: 'Auto-Track', icon: Zap },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'insights', label: 'Insights', icon: Lightbulb },
   { id: 'afford', label: 'Can I afford?', icon: HelpCircle },
@@ -73,6 +76,7 @@ const titles: Record<ViewId, string> = {
   overview: 'Overview',
   summary: 'Expense summary',
   expenses: 'Expenses',
+  'auto-track': 'Automatic expense tracker',
   calendar: 'Spending calendar',
   insights: 'Insights & advice',
   afford: 'Can I afford this?',
@@ -84,18 +88,18 @@ const titles: Record<ViewId, string> = {
 }
 
 export function AppShell() {
-  const { setup, expenses, resetAll } = useStore()
+  const { setup, expenses, resetAll, incentives } = useStore()
   const { user, logOut } = useAuth()
   const [view, setView] = useState<ViewId>('overview')
   const [moreOpen, setMoreOpen] = useState(false)
 
-  const status = setup ? computeDailyStatus(setup, expenses) : null
+  const status = setup ? computeDailyStatus(setup, expenses, new Date(), incentives.history) : null
 
   // Opt-in budget notifications: nudge (once a day) when today's spend goes
   // over the safe limit. Only fires if the user turned notifications on and
   // the browser granted permission.
   useEffect(() => {
-    if (!user?.notifyOptIn || !status) return
+    if (!user?.notifyOptIn || !status?.level) return
     if (getPermission() !== 'granted') return
     if (status.level === 'danger') {
       sendDailyAlertOnce(
@@ -125,6 +129,8 @@ export function AppShell() {
         return <Summary />
       case 'expenses':
         return <Expenses />
+      case 'auto-track':
+        return <BankSync />
       case 'calendar':
         return <Calendar />
       case 'insights':

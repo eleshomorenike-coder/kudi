@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, Sparkles, Wallet, Wand2, PencilLine } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, PencilLine, ShieldCheck, SlidersHorizontal, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -64,7 +64,6 @@ export function SetupWizard() {
         days: duration === 'custom' ? effDays : undefined,
         profile,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [income, effPeriod, duration, effDays, profile],
   )
 
@@ -239,11 +238,11 @@ export function SetupWizard() {
                       : 'border-border hover:bg-muted',
                   )}
                 >
-                  <Wand2 className="mt-0.5 size-5 shrink-0 text-primary" />
+                  <SlidersHorizontal className="mt-0.5 size-5 shrink-0 text-primary" />
                   <span>
-                    <span className="block text-sm font-semibold">Build it for me</span>
+                    <span className="block text-sm font-semibold">Recommended budget plan</span>
                     <span className="block text-xs text-muted-foreground">
-                      We&apos;ll split your money into needs, savings, buffer and daily spending.
+                      We&apos;ll calculate an optimal split into needs, savings, buffer and daily spending.
                     </span>
                   </span>
                 </button>
@@ -301,7 +300,7 @@ export function SetupWizard() {
 
             <div className="rounded-2xl bg-primary p-6 text-primary-foreground">
               <p className="flex items-center gap-1.5 text-sm opacity-90">
-                <Sparkles className="size-4" /> Safe to spend each day
+                <ShieldCheck className="size-4" /> Safe to spend each day
               </p>
               <p className="mt-1 font-mono text-5xl font-semibold tracking-tight">
                 {formatNaira(dailyLimit)}
@@ -450,7 +449,7 @@ export function SetupWizard() {
 
             <div className="rounded-2xl bg-primary p-6 text-primary-foreground">
               <p className="flex items-center gap-1.5 text-sm opacity-90">
-                <Sparkles className="size-4" /> Safe to spend each day
+                <ShieldCheck className="size-4" /> Safe to spend each day
               </p>
               <p className="mt-1 font-mono text-5xl font-semibold tracking-tight">
                 {formatNaira(dailyLimit)}
@@ -498,12 +497,10 @@ export function SetupWizard() {
           >
             {mode === 'auto' ? (
               <>
-                <Wand2 className="size-4" /> Build my budget
+                <SlidersHorizontal className="size-4" /> Build my budget
               </>
             ) : (
-              <>
-                Continue <ArrowRight className="size-4" />
-              </>
+              'Continue'
             )}
           </Button>
         ) : step < lastStep ? (
@@ -513,7 +510,7 @@ export function SetupWizard() {
             disabled={!canContinue}
             onClick={() => setStep((s) => s + 1)}
           >
-            Continue <ArrowRight className="size-4" />
+            Continue
           </Button>
         ) : (
           <Button size="lg" className="h-11 flex-1" disabled={flexible < 0} onClick={finish}>
@@ -548,3 +545,4 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
     </div>
   )
 }
+

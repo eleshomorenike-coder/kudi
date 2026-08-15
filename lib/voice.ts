@@ -176,6 +176,7 @@ const CATEGORY_KEYWORDS: Record<CategoryId, string[]> = {
     'bet',
     'betting',
   ],
+  other: [],
 }
 
 /** Spelled-out numbers we might hear for small amounts. */
@@ -261,6 +262,7 @@ function extractCategory(text: string): CategoryId {
     CategoryId,
     string[],
   ][]) {
+    if (!words) continue
     let score = 0
     for (const w of words) {
       if (lower.includes(w)) score += w.includes(' ') ? 2 : 1

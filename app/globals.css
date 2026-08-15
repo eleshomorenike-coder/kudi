@@ -4,6 +4,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@font-face {
+  font-family: 'NairaFallback';
+  src: local('-apple-system'), local('BlinkMacSystemFont'), local('Segoe UI'), local('Roboto'), local('Arial');
+  unicode-range: U+20A6;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -48,8 +54,8 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  --font-sans: var(--font-geist-sans), var(--font-noto-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), var(--font-noto-sans), ui-monospace, monospace;
+  --font-sans: 'NairaFallback', var(--font-geist-sans), var(--font-noto-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'NairaFallback', var(--font-geist-mono), var(--font-noto-sans), ui-monospace, monospace;
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

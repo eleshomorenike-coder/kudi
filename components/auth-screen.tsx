@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowRight, Eye, EyeOff, Loader2, Sparkles, Wallet } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Loader2, ShieldCheck, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -64,7 +63,7 @@ export function AuthScreen() {
 
         <div className="max-w-sm">
           <p className="inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/15 px-3 py-1 text-xs font-semibold">
-            <Sparkles className="size-3.5" /> Built for students
+            <ShieldCheck className="size-3.5" /> Built for students
           </p>
           <h1 className="mt-4 text-4xl font-semibold leading-tight text-balance">
             Spend with confidence, save without stress.
@@ -168,10 +167,7 @@ export function AuthScreen() {
                 {busy ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <>
-                    {mode === 'signup' ? 'Create account' : 'Log in'}
-                    <ArrowRight className="size-4" />
-                  </>
+                    mode === 'signup' ? 'Create account' : 'Log in'
                 )}
               </Button>
             </form>

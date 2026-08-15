@@ -18,7 +18,7 @@ const resultStyles: Record<AffordResult['level'], string> = {
 const quickAmounts = [1000, 2000, 5000, 10000]
 
 export function Afford() {
-  const { setup, expenses } = useStore()
+  const { setup, expenses, incentives } = useStore()
   const [amount, setAmount] = useState('')
   const [result, setResult] = useState<AffordResult | null>(null)
   const [checkedAmount, setCheckedAmount] = useState(0)
@@ -27,7 +27,7 @@ export function Afford() {
 
   function check(value: number) {
     if (value <= 0) return
-    setResult(canIAfford(setup!, expenses, value))
+    setResult(canIAfford(setup!, expenses, value, new Date(), incentives.history))
     setCheckedAmount(value)
   }
 

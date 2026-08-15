@@ -11,7 +11,7 @@ import {
   Loader2,
   RefreshCw,
   ShieldCheck,
-  Sparkles,
+  Trash2,
   Unlink,
   Zap,
 } from 'lucide-react'
@@ -22,17 +22,221 @@ import { Label } from '@/components/ui/label'
 import { useAuth } from '@/lib/auth'
 import { useStore } from '@/lib/store'
 import { fetchTransactions, linkAccount, listBanks } from '@/lib/bank-sync'
+import {
+  parseBankAlertsBatch,
+  SAMPLE_BANK_ALERTS,
+  type ParsedAlertTransaction,
+} from '@/lib/auto-tracker'
 import type { BankInfo } from '@/lib/types'
 import { formatNaira } from '@/lib/finance'
 import { cn } from '@/lib/utils'
 
-const PREMIUM_PRICE = 500 // ₦ / month, display only
-
 export function BankSync() {
   const { user, upgradeToPremium } = useAuth()
+  const [activeTab, setActiveTab] = useState<'bank' | 'sms'>('bank')
+
   if (!user) return null
 
-  return user.premium ? <PremiumSync /> : <Paywall onUpgrade={upgradeToPremium} />
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Top Segmented Selector */}
+      <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-muted p-1 text-xs font-medium">
+        <button
+          type="button"
+          onClick={() => setActiveTab('bank')}
+          className={cn(
+            'flex items-center justify-center gap-1.5 rounded-xl py-2 transition-all',
+            activeTab === 'bank'
+              ? 'bg-background font-semibold text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Landmark className="size-3.5" /> Open-Banking Auto-Sync
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('sms')}
+          className={cn(
+            'flex items-center justify-center gap-1.5 rounded-xl py-2 transition-all',
+            activeTab === 'sms'
+              ? 'bg-background font-semibold text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <Zap className="size-3.5" /> SMS Alert Auto-Parser
+        </button>
+      </div>
+
+      {activeTab === 'bank' ? (
+        user.premium ? (
+          <ConnectedOrConnectBank />
+        ) : (
+          <Paywall onUpgrade={upgradeToPremium} />
+        )
+      ) : (
+        <SmsAlertTracker />
+      )}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* SMS Alert Auto-Parser (Free & Universal)                                   */
+/* -------------------------------------------------------------------------- */
+
+function SmsAlertTracker() {
+  const { categories, importTransactions } = useStore()
+  const [alertText, setAlertText] = useState('')
+  const [parsedItems, setParsedItems] = useState<ParsedAlertTransaction[]>([])
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
+
+  function handleParse(text: string) {
+    setAlertText(text)
+    const results = parseBankAlertsBatch(text)
+    setParsedItems(results)
+  }
+
+  function handleImport() {
+    if (parsedItems.length === 0) return
+
+    const transactions = parsedItems.map((item) => ({
+      id: item.id,
+      amount: item.amount,
+      category: item.category,
+      note: `${item.note} (${item.bankName})`,
+      date: item.date,
+      source: 'bank' as const,
+    }))
+
+    const added = importTransactions(transactions)
+    setSuccessMsg(`Auto-tracked ${added} ${added === 1 ? 'expense' : 'expenses'} successfully!`)
+    setTimeout(() => {
+      setSuccessMsg(null)
+      setAlertText('')
+      setParsedItems([])
+    }, 2500)
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Card className="p-5">
+        <div className="flex items-center gap-2.5">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+            <Zap className="size-5" />
+          </div>
+          <div>
+            <h3 className="font-bold">Instant SMS Alert Reader</h3>
+            <p className="text-xs text-muted-foreground">Paste single or batch bank SMS alerts to parse & categorize automatically</p>
+          </div>
+        </div>
+
+        {/* Presets */}
+        <div className="mt-4">
+          <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Try a sample Nigerian debit alert
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {SAMPLE_BANK_ALERTS.map((s, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => handleParse(s.text)}
+                className="rounded-lg border border-border/80 bg-muted/40 px-2.5 py-1 text-xs font-medium transition-colors hover:border-primary hover:bg-muted"
+              >
+                {s.title}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Text Area */}
+        <div className="mt-4 flex flex-col gap-2">
+          <Label htmlFor="sms-area">Paste bank alert text</Label>
+          <textarea
+            id="sms-area"
+            rows={4}
+            value={alertText}
+            onChange={(e) => handleParse(e.target.value)}
+            placeholder="e.g. Debit Alert: Your OPay Acct has been debited with NGN 2,500.00 for Transfer to CHICKEN REPUBLIC on 15-Aug-2026..."
+            className="w-full rounded-xl border border-input bg-background p-3 text-xs font-mono placeholder:text-muted-foreground/60 focus-visible:border-primary focus-visible:outline-none"
+          />
+        </div>
+
+        {parsedItems.length > 0 && (
+          <div className="mt-4 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Extracted Data ({parsedItems.length})
+              </p>
+              <span className="text-[0.65rem] font-bold text-safe">✓ Auto-Categorized</span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {parsedItems.map((item, idx) => (
+                <Card key={idx} className="flex items-center justify-between gap-3 p-3.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-bold text-foreground">
+                        {formatNaira(item.amount)}
+                      </span>
+                      <span className="rounded bg-primary/10 px-2 py-0.5 font-mono text-[0.65rem] font-bold text-primary">
+                        {item.bankName}
+                      </span>
+                    </div>
+                    <p className="truncate text-xs font-medium text-foreground mt-0.5">{item.note}</p>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <select
+                        value={item.category}
+                        onChange={(e) => {
+                          const val = e.target.value
+                          setParsedItems((prev) =>
+                            prev.map((it, i) => (i === idx ? { ...it, category: val } : it)),
+                          )
+                        }}
+                        className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground"
+                      >
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.label}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-[0.65rem] text-muted-foreground">
+                        {new Date(item.date).toLocaleDateString('en-NG', {
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setParsedItems((prev) => prev.filter((_, i) => i !== idx))}
+                    aria-label="Remove item"
+                    className="text-muted-foreground hover:text-danger"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </Card>
+              ))}
+            </div>
+
+            <Button onClick={handleImport} size="lg" className="mt-2 h-11 font-semibold">
+              <Zap className="size-4" /> Import {parsedItems.length} {parsedItems.length === 1 ? 'Expense' : 'Expenses'}
+            </Button>
+          </div>
+        )}
+
+        {successMsg && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-safe/15 p-3 text-xs font-semibold text-safe">
+            <Check className="size-4 shrink-0" />
+            <span>{successMsg}</span>
+          </div>
+        )}
+      </Card>
+    </div>
+  )
 }
 
 /* -------------------------------------------------------------------------- */
@@ -44,7 +248,6 @@ function Paywall({ onUpgrade }: { onUpgrade: () => void }) {
 
   function handleUpgrade() {
     setUpgrading(true)
-    // Simulate a payment round-trip before unlocking.
     setTimeout(() => {
       onUpgrade()
       setUpgrading(false)
@@ -56,109 +259,80 @@ function Paywall({ onUpgrade }: { onUpgrade: () => void }) {
       <Card className="overflow-hidden">
         <div className="bg-primary px-6 py-7 text-primary-foreground">
           <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-primary-foreground/15 px-2.5 py-1 text-xs font-semibold">
-            <Crown className="size-3.5" /> Premium
+            <Crown className="size-3.5" /> Premium Feature
           </div>
-          <h2 className="text-2xl font-semibold text-balance">Connect your bank, skip the typing</h2>
+          <h2 className="text-2xl font-semibold text-balance">Direct Open-Banking Auto-Sync</h2>
           <p className="mt-1.5 text-sm text-primary-foreground/80 text-pretty">
-            Link your bank or fintech account and KUDI imports your spending automatically —
-            categorised and ready. Manual logging stays free, forever.
+            Connect your Nigerian bank or fintech (OPay, Kuda, PalmPay, GTBank) to pull debits in real time with automated category matching.
           </p>
         </div>
 
         <div className="grid gap-px bg-border sm:grid-cols-2">
-          <PlanColumn
-            title="Basic"
-            price="Free"
-            highlight={false}
-            features={[
-              { label: 'Log spending manually', included: true },
-              { label: 'Voice & quick add', included: true },
-              { label: 'Budgets, insights & leaks', included: true },
-              { label: 'Automatic bank import', included: false },
-            ]}
-          />
-          <PlanColumn
-            title="Premium"
-            price={`${formatNaira(PREMIUM_PRICE)}/mo`}
-            highlight
-            features={[
-              { label: 'Everything in Basic', included: true },
-              { label: 'Auto-import from your bank', included: true },
-              { label: 'Smart transaction categories', included: true },
-              { label: 'One-tap sync any time', included: true },
-            ]}
-          />
+          <div className="bg-card p-5">
+            <div className="mb-3 flex items-baseline justify-between">
+              <h3 className="font-semibold">SMS Alert Parser</h3>
+              <span className="font-mono text-sm font-semibold">Free</span>
+            </div>
+            <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+              <li className="flex items-center gap-2 text-foreground">
+                <Check className="size-4 text-safe shrink-0" /> Paste any Nigerian bank SMS alert
+              </li>
+              <li className="flex items-center gap-2 text-foreground">
+                <Check className="size-4 text-safe shrink-0" /> Smart category keyword extraction
+              </li>
+              <li className="flex items-center gap-2 text-foreground">
+                <Check className="size-4 text-safe shrink-0" /> Batch parsing & manual tracking
+              </li>
+            </ul>
+          </div>
+
+          <div className="bg-primary/5 p-5">
+            <div className="mb-3 flex items-baseline justify-between">
+              <h3 className="font-semibold">Direct Bank Sync</h3>
+              <span className="font-mono text-sm font-semibold">₦500/mo</span>
+            </div>
+            <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+              <li className="flex items-center gap-2 text-foreground">
+                <Check className="size-4 text-safe shrink-0" /> Live connection to OPay, Kuda, GTBank
+              </li>
+              <li className="flex items-center gap-2 text-foreground">
+                <Check className="size-4 text-safe shrink-0" /> Automatic background syncing
+              </li>
+              <li className="flex items-center gap-2 text-foreground">
+                <Check className="size-4 text-safe shrink-0" /> 1-tap refresh anytime
+              </li>
+            </ul>
+          </div>
         </div>
       </Card>
 
       <Card className="flex items-start gap-3 p-5">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-safe" />
         <p className="text-sm text-muted-foreground text-pretty">
-          KUDI uses a secure open-banking connection and only ever reads your transactions —
-          it can never move money. You can disconnect any time.
+          KUDI connects via read-only open-banking protocols. We can only read debit entries and can never initiate transfers.
         </p>
       </Card>
 
-      <Button size="lg" className="h-12 text-base" onClick={handleUpgrade} disabled={upgrading}>
+      <Button size="lg" className="h-12 text-base font-semibold" onClick={handleUpgrade} disabled={upgrading}>
         {upgrading ? (
           <>
-            <Loader2 className="size-4 animate-spin" /> Unlocking…
+            <Loader2 className="size-4 animate-spin" /> Unlocking Auto-Sync…
           </>
         ) : (
           <>
-            <Sparkles className="size-4" /> Upgrade to Premium
+            <Zap className="size-4" /> Unlock Direct Bank Sync (Demo)
           </>
         )}
       </Button>
-      <p className="-mt-2 text-center text-xs text-muted-foreground">
-        Demo upgrade — no real payment is taken.
-      </p>
-    </div>
-  )
-}
-
-function PlanColumn({
-  title,
-  price,
-  highlight,
-  features,
-}: {
-  title: string
-  price: string
-  highlight: boolean
-  features: { label: string; included: boolean }[]
-}) {
-  return (
-    <div className={cn('bg-card p-5', highlight && 'bg-primary/5')}>
-      <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="font-semibold">{title}</h3>
-        <span className="font-mono text-sm font-semibold">{price}</span>
-      </div>
-      <ul className="flex flex-col gap-2">
-        {features.map((f) => (
-          <li
-            key={f.label}
-            className={cn(
-              'flex items-center gap-2 text-sm',
-              f.included ? 'text-foreground' : 'text-muted-foreground/60 line-through',
-            )}
-          >
-            <Check
-              className={cn('size-4 shrink-0', f.included ? 'text-safe' : 'text-muted-foreground/40')}
-            />
-            {f.label}
-          </li>
-        ))}
-      </ul>
     </div>
   )
 }
 
 /* -------------------------------------------------------------------------- */
-/* Premium plan: connect + sync                                               */
+/* Connected or Connect Bank Panel                                            */
 /* -------------------------------------------------------------------------- */
 
-function PremiumSync() {
+function ConnectedOrConnectBank() {
   const { bank } = useStore()
   return bank ? <ConnectedPanel /> : <ConnectPanel />
 }
@@ -177,7 +351,6 @@ function ConnectPanel() {
     try {
       const connection = await linkAccount(selected, accountName)
       connectBank(connection)
-      // Pull the initial transaction history right away.
       const txns = await fetchTransactions(null)
       const count = importTransactions(txns)
       setImported(count)
@@ -192,11 +365,9 @@ function ConnectPanel() {
         <span className="flex size-14 items-center justify-center rounded-2xl bg-safe/15 text-safe">
           <BadgeCheck className="size-7" />
         </span>
-        <h2 className="text-xl font-semibold">Bank connected</h2>
+        <h2 className="text-xl font-semibold">Bank Connected</h2>
         <p className="max-w-sm text-sm text-muted-foreground text-pretty">
-          We imported <span className="font-semibold text-foreground">{imported}</span>{' '}
-          {imported === 1 ? 'transaction' : 'transactions'} from your account. New spending will
-          appear here whenever you sync.
+          Imported <span className="font-semibold text-foreground">{imported}</span> transactions from your account.
         </p>
       </Card>
     )
@@ -205,12 +376,9 @@ function ConnectPanel() {
   return (
     <div className="flex flex-col gap-5">
       <Card className="p-5">
-        <div className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
-          <Crown className="size-3.5" /> Premium active
-        </div>
-        <h2 className="mt-2 font-semibold">Choose your bank</h2>
+        <h2 className="font-semibold">Select Your Bank / Fintech</h2>
         <p className="mt-1 text-sm text-muted-foreground text-pretty">
-          Pick where your money lives. We&apos;ll securely link it and pull in your recent spending.
+          Choose where you receive allowances or make daily transfers.
         </p>
 
         <div className="mt-4 grid grid-cols-3 gap-2.5">
@@ -223,9 +391,7 @@ function ConnectPanel() {
                 onClick={() => setSelected(b)}
                 className={cn(
                   'flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-colors',
-                  active
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:bg-muted',
+                  active ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted',
                 )}
               >
                 <span
@@ -254,30 +420,30 @@ function ConnectPanel() {
             </span>
             <div>
               <p className="text-sm font-semibold">{selected.name}</p>
-              <p className="text-xs text-muted-foreground">Secure open-banking link</p>
+              <p className="text-xs text-muted-foreground">Direct open-banking connection</p>
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="acct-name">Name on the account</Label>
+            <Label htmlFor="acct-name">Name on Account</Label>
             <Input
               id="acct-name"
               value={accountName}
               onChange={(e) => setAccountName(e.target.value)}
-              placeholder="e.g. Ada Obi"
+              placeholder="e.g. Tunde Balogun"
               autoComplete="name"
             />
           </div>
 
           <Button
             size="lg"
-            className="mt-4 h-11 w-full"
+            className="mt-4 h-11 w-full font-semibold"
             onClick={handleConnect}
             disabled={busy}
           >
             {busy ? (
               <>
-                <Loader2 className="size-4 animate-spin" /> Connecting securely…
+                <Loader2 className="size-4 animate-spin" /> Connecting…
               </>
             ) : (
               <>
@@ -285,9 +451,6 @@ function ConnectPanel() {
               </>
             )}
           </Button>
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            Demo connection — your real bank credentials are never requested.
-          </p>
         </Card>
       )}
     </div>
@@ -296,7 +459,6 @@ function ConnectPanel() {
 
 function ConnectedPanel() {
   const { bank, expenses, disconnectBank, importTransactions } = useStore()
-  const { cancelPremium } = useAuth()
   const [syncing, setSyncing] = useState(false)
   const [lastResult, setLastResult] = useState<number | null>(null)
 
@@ -327,7 +489,7 @@ function ConnectedPanel() {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Connection card */}
+      {/* Live status */}
       <Card className="p-5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -345,7 +507,7 @@ function ConnectedPanel() {
             </div>
           </div>
           <span className="inline-flex items-center gap-1 rounded-full bg-safe/15 px-2.5 py-1 text-xs font-medium text-safe">
-            <span className="size-1.5 rounded-full bg-safe" /> Live
+            <span className="size-1.5 rounded-full bg-safe" /> Connected
           </span>
         </div>
 
@@ -360,7 +522,7 @@ function ConnectedPanel() {
                     hour: '2-digit',
                     minute: '2-digit',
                   })
-                : 'Not yet'}
+                : 'Just now'}
             </p>
           </div>
           <Button onClick={handleSync} disabled={syncing}>
@@ -370,7 +532,7 @@ function ConnectedPanel() {
               </>
             ) : (
               <>
-                <RefreshCw className="size-4" /> Sync now
+                <RefreshCw className="size-4" /> Sync Now
               </>
             )}
           </Button>
@@ -380,29 +542,27 @@ function ConnectedPanel() {
           <p
             className={cn(
               'mt-3 rounded-lg px-3 py-2 text-xs font-medium',
-              lastResult > 0
-                ? 'bg-safe/15 text-safe'
-                : 'bg-muted text-muted-foreground',
+              lastResult > 0 ? 'bg-safe/15 text-safe' : 'bg-muted text-muted-foreground',
             )}
           >
             {lastResult > 0
               ? `Imported ${lastResult} new ${lastResult === 1 ? 'transaction' : 'transactions'}.`
-              : "You're all caught up — no new transactions."}
+              : "All caught up — no new transactions."}
           </p>
         )}
       </Card>
 
-      {/* Imported transactions */}
+      {/* Auto-imported history */}
       <div>
         <div className="mb-2 flex items-center gap-2 px-1">
           <Zap className="size-4 text-primary" />
-          <h3 className="text-sm font-semibold">Auto-imported spending</h3>
+          <h3 className="text-sm font-semibold">Auto-Imported Transactions</h3>
         </div>
+
         {bankExpenses.length === 0 ? (
           <Card className="p-8 text-center">
             <p className="text-sm text-muted-foreground text-pretty">
-              Nothing imported yet. Tap <span className="font-medium text-foreground">Sync now</span>{' '}
-              to pull your latest transactions.
+              Tap <span className="font-medium text-foreground">Sync Now</span> to fetch recent debit entries.
             </p>
           </Card>
         ) : (
@@ -418,11 +578,8 @@ function ConnectedPanel() {
                     {new Date(e.date).toLocaleDateString('en-NG', {
                       day: 'numeric',
                       month: 'short',
-                    })}
-                    {' · '}
-                    <span className="inline-flex items-center gap-1">
-                      <Sparkles className="size-3" /> Auto
-                    </span>
+                    })}{' '}
+                    · <span className="text-primary font-medium">Auto-Tracked</span>
                   </p>
                 </div>
                 <span className="font-mono text-sm font-semibold">{formatNaira(e.amount)}</span>
@@ -432,7 +589,6 @@ function ConnectedPanel() {
         )}
       </div>
 
-      {/* Account actions */}
       <div className="flex flex-col gap-3">
         <Button
           variant="outline"
@@ -440,21 +596,8 @@ function ConnectedPanel() {
           className="h-11 justify-start border-danger/40 text-danger hover:bg-danger/10 hover:text-danger"
           onClick={handleDisconnect}
         >
-          <Unlink className="size-4" /> Disconnect bank
+          <Unlink className="size-4" /> Disconnect Bank
         </Button>
-        <button
-          onClick={() => {
-            if (
-              confirm('Cancel Premium? Auto-sync will be turned off and your bank disconnected.')
-            ) {
-              disconnectBank()
-              cancelPremium()
-            }
-          }}
-          className="text-center text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
-        >
-          Cancel Premium subscription
-        </button>
       </div>
     </div>
   )
